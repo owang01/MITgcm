@@ -102,7 +102,11 @@ C     data.pkg namelists
      &                    SQUEEZE_RIGHT , myThid )
 
       CALL OPEN_COPY_DATA_FILE(
-     I                          'data.pkg', 'PACKAGES_BOOT',
+#ifdef PLEIADES_LUSTRE_OPT
+     I                       '/tmp/data.pkg', 'PACKAGES_BOOT',
+#else
+     I                       'data.pkg', 'PACKAGES_BOOT',
+#endif
      O                          iUnit,
      I                          myThid )
 

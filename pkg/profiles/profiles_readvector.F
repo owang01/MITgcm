@@ -78,6 +78,12 @@ c implies that a forward loop is calling
 
       do kkk=1,NVARMAX
       if (vec_quantities(fNb,kkk,bi,bj).EQV..TRUE.) then
+!        write(msgbuf,'(A,i3,4A)')
+!     &  'ReadVec: Field ',kkk,' ',prof_names(fNb,kkk),
+!     &  prof_namesweight(fNb,kkk),prof_namesclim(fNb,kkk)
+!        call print_message(msgbuf,standardmessageunit,
+!     &                     SQUEEZE_RIGHT,myThid)
+
       err = NF_INQ_VARID(fiddata(fNb,bi,bj),prof_names(fNb,kkk),
      & varid1 )
       err = NF_GET_VARA_DOUBLE(fiddata(fNb,bi,bj), varid1 , vec_start,

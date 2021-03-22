@@ -139,8 +139,13 @@ C     Make scratch copies of input data file with and without comments
 C     Stop if called from eeboot_minimal.F before myProcId is set
       IF ( .NOT.doReport )
      &     STOP 'ABNORMAL END: S/R EESET_PARMS: myProcId unset'
+#ifdef PLEIADES_LUSTRE_OPT
+      WRITE(scratchFile1,'(A)') '/tmp/scratch1'
+      WRITE(scratchFile2,'(A)') '/tmp/scratch2'
+#else
       WRITE(scratchFile1,'(A)') 'scratch1'
       WRITE(scratchFile2,'(A)') 'scratch2'
+#endif
       IF( myProcId .EQ. 0 ) THEN
        OPEN(UNIT=scrUnit1, FILE=scratchFile1, STATUS='UNKNOWN')
        OPEN(UNIT=scrUnit2, FILE=scratchFile2, STATUS='UNKNOWN')
@@ -155,8 +160,13 @@ C     multi-node/multi-processor systems
 C     this definition will go into CPP_EEMACROS.h, once this method is
 C     properly established
 C     After opening regular files here, they are closed with STATUS='DELETE'
+#ifdef PLEIADES_LUSTRE_OPT
+      WRITE(scratchFile1,'(A,'//FMT_PROC_ID//')') '/tmp/scratch1.', procId
+      WRITE(scratchFile2,'(A,'//FMT_PROC_ID//')') '/tmp/scratch2.', procId
+#else
       WRITE(scratchFile1,'(A,'//FMT_PROC_ID//')') 'scratch1.', procId
       WRITE(scratchFile2,'(A,'//FMT_PROC_ID//')') 'scratch2.', procId
+#endif
       OPEN(UNIT=scrUnit1, FILE=scratchFile1, STATUS='UNKNOWN')
       OPEN(UNIT=scrUnit2, FILE=scratchFile2, STATUS='UNKNOWN')
 # endif
@@ -166,8 +176,13 @@ C     After opening regular files here, they are closed with STATUS='DELETE'
       IF( myProcId .EQ. 0 ) THEN
 #endif
 
+#ifdef PLEIADES_LUSTRE_OPT
+      OPEN(UNIT=eeDataUnit,FILE='/tmp/eedata',STATUS='OLD',
+     &     ACTION='read',err=1,IOSTAT=errIO)
+#else
       OPEN(UNIT=eeDataUnit,FILE='eedata',STATUS='OLD',
      &     err=1,IOSTAT=errIO)
+#endif
       IF ( errIO .GE. 0 ) GOTO 2
     1 CONTINUE
       IF ( doReport ) THEN

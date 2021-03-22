@@ -57,7 +57,7 @@ C   any access by other than master thread is put between BARRIER (protected).
 C
 C Created: 03/16/99 adcroft@mit.edu
 CEOP
-
+!      use dictionary_m
 C !USES:
       IMPLICIT NONE
 C Global variables / common blocks
@@ -113,8 +113,13 @@ C     bBij  :: base shift in Buffer index for tile bi,bj
       INTEGER tBx, tBy, iGjLoc, jGjLoc
 #ifdef ALLOW_EXCH2
       INTEGER tN
+!      real(kind=4), allocatable :: buffer(:)
 #endif /* ALLOW_EXCH2 */
-
+!      call d%init(1024)
+!      call d%set('one', 'one')
+!      call d%set('pi', '3.14159')
+!      write(*,*) 'one', ' = ', d%get('one')
+!      write(*,*) 'pi', ' = ', d%get('pi')
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 C Set dimensions:
       xSize = Nx
@@ -232,7 +237,7 @@ C Check first for global file with simple name (ie. fName)
         IF (exst) THEN
           IF ( debugLevel .GE. debLevB ) THEN
             WRITE(msgBuf,'(A,A)')
-     &      ' MDS_READ_FIELD: opening global file: ',dataFName(1:IL)
+     &      ' MDS_READ_FIELD: opening global file1: ',dataFName(1:IL)
             CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                          SQUEEZE_RIGHT, myThid)
           ENDIF
@@ -246,7 +251,7 @@ C If negative check for global file with MDS name (ie. fName.data)
           IF (exst) THEN
            IF ( debugLevel .GE. debLevB ) THEN
             WRITE(msgBuf,'(A,A)')
-     &      ' MDS_READ_FIELD: opening global file: ',dataFName(1:IL+5)
+     &      ' MDS_READ_FIELD: opening global file2: ',dataFName(1:IL+5)
             CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                          SQUEEZE_RIGHT, myThid)
            ENDIF
@@ -263,11 +268,16 @@ C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 
 C master thread of process 0, only, opens a global file
        IF ( iAmDoingIO ) THEN
+!        allocate(buffer(xSize*ySize))
 C If global file is visible to process 0, then open it here.
 C Otherwise stop program.
          IF ( globalFile) THEN
           length_of_rec = MDS_RECLEN( filePrec, xSize*ySize, myThid )
+#ifdef PLEIADES_LUSTRE_OPT
+          OPEN( dUnit, file=dataFName, status='old', ACTION='read',
+#else
           OPEN( dUnit, file=dataFName, status='old',
+#endif
      &         access='direct', recl=length_of_rec )
          ELSE
           WRITE(msgBuf,'(2A)')
@@ -285,13 +295,20 @@ C Otherwise stop program.
 C- endif iAmDoingIO
        ENDIF
 
-       DO k=kLo,kHi
+       DO k=kLo,kHi !1,1
 
 C master thread of process 0, only, read from file
         IF ( iAmDoingIO ) THEN
           irec = 1 + k-kLo + (irecord-1)*nNz
           IF (filePrec .EQ. precFloat32) THEN
-           READ(dUnit,rec=irec) ( xy_buffer_r4(i),i=1,xSize*ySize )
+!            WRITE(msgBuf,'(A,A,I3,5I8)')
+!     & 'MDS_READ_FIELD: reading: ',dataFName(1:IL),k,irec,xSize*ySize,
+!     &                sizeof(xy_buffer_r4),xyBuffer_size,length_of_rec
+!            CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+!     &                          SQUEEZE_RIGHT, myThid)
+
+           READ(dUnit,rec=irec) ( xy_buffer_r4(i),i=1,xSize*ySize ) ! 1,105300
+           !READ(dUnit,rec=irec) buffer
 #ifdef _BYTESWAPIO
            CALL MDS_BYTESWAPR4( xSize*ySize, xy_buffer_r4 )
 #endif
@@ -310,6 +327,7 @@ C  to acces shared buffer while master thread is loading data into
 
         IF ( filePrec.EQ.precFloat32 ) THEN
           CALL SCATTER_2D_R4(
+!     U                        buffer,
      U                        xy_buffer_r4,
      O                        sharedLocBuf_r4,
      I                        xSize, ySize,
@@ -362,6 +380,7 @@ C All threads wait for Master to finish loading into shared buffer
 c      ENDDO k=kLo,kHi
 
        IF ( iAmDoingIO ) THEN
+         !deallocate(buffer)
          CLOSE( dUnit )
        ENDIF
 
@@ -379,7 +398,11 @@ C Only do I/O if I am the master thread
 C If we are reading from a global file then we open it here
         IF (globalFile) THEN
          length_of_rec = MDS_RECLEN( filePrec, sNx, myThid )
+#ifdef PLEIADES_LUSTRE_OPT
+         OPEN( dUnit, file=dataFName, status='old', ACTION='read',
+#else
          OPEN( dUnit, file=dataFName, status='old',
+#endif
      &        access='direct', recl=length_of_rec )
          fileIsOpen=.TRUE.
         ENDIF
@@ -462,7 +485,11 @@ C (This is a place-holder for the active/passive mechanism
      &                        SQUEEZE_RIGHT, myThid)
             ENDIF
             length_of_rec = MDS_RECLEN( filePrec, sNx*sNy*nNz, myThid )
+#ifdef PLEIADES_LUSTRE_OPT
+            OPEN( dUnit, file=dataFName, status='old', ACTION='read',
+#else
             OPEN( dUnit, file=dataFName, status='old',
+#endif
      &            access='direct', recl=length_of_rec )
             fileIsOpen=.TRUE.
            ELSE

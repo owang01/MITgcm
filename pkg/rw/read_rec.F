@@ -323,6 +323,8 @@ C     !INTERFACE:
      O                           field,
      I                           iRec, myIter, myThid )
 
+!      use dictionary_m
+
 C     !DESCRIPTION: \bv
 C READ_REC_3D_RL is a "front-end" interface to the low-level I/O routines.
 C  read a full 3D field (nNz levels) from record number "iRec"
@@ -354,9 +356,16 @@ C Local
       LOGICAL useCurrentDir
       _RS dummyRS(1)
       CHARACTER*(2) fType
+      type(dictionary_t) :: d
 c     INTEGER IL
 c     CHARACTER*(MAX_LEN_FNAM) fullName
 CEOP
+
+!      call d%init(1024)
+!      call d%set('one', 'one')
+!      call d%set('pi', '3.14159')
+!      write(*,*) 'one', ' = ', d%get('one')
+!      write(*,*) 'pi', ' = ', d%get('pi')
 
 
 c     IF (myIter.GE.0) THEN
