@@ -345,6 +345,7 @@ C--   read in array "field"
         useCurrentDir = .FALSE.
         fType = 'RL'
 #ifdef ALLOW_MDSIO
+        !write(*,*) 'READ_MFLDS_3D_RL: ', trim(fName)
         CALL MDS_READ_FIELD(
      I                       fName, fPrec, useCurrentDir,
      I                       fType, nNz, 1, nNz,
