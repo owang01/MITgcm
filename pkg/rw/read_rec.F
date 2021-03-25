@@ -323,7 +323,7 @@ C     !INTERFACE:
      O                           field,
      I                           iRec, myIter, myThid )
 
-!      use dictionary_m
+      use dictionary_m
 
 C     !DESCRIPTION: \bv
 C READ_REC_3D_RL is a "front-end" interface to the low-level I/O routines.
@@ -341,7 +341,7 @@ C Global
 C     !INPUT/OUTPUT PARAMETERS:
 C Arguments
       CHARACTER*(*) fName
-      INTEGER fPrec
+      INTEGER fPrec,fUnit1,fUnit2
       INTEGER nNz
       _RL field(1-Olx:sNx+Olx,1-Oly:sNy+Oly,nNz,nSx,nSy)
       INTEGER iRec
@@ -349,27 +349,20 @@ C Arguments
       INTEGER myThid
 
 C Functions
-c     INTEGER ILNBLNK
+!      INTEGER ILNBLNK
 
 C     !LOCAL VARIABLES:
 C Local
-      LOGICAL useCurrentDir
+      LOGICAL useCurrentDir, globalFile, fileIsOpen
       _RS dummyRS(1)
       CHARACTER*(2) fType
-      type(dictionary_t) :: d
-c     INTEGER IL
+!      CHARACTER*(MAX_LEN_MBUF) msgBuf
+!      INTEGER IL
 c     CHARACTER*(MAX_LEN_FNAM) fullName
 CEOP
 
-!      call d%init(1024)
-!      call d%set('one', 'one')
-!      call d%set('pi', '3.14159')
-!      write(*,*) 'one', ' = ', d%get('one')
-!      write(*,*) 'pi', ' = ', d%get('pi')
-
-
 c     IF (myIter.GE.0) THEN
-c      IL=ILNBLNK( fName )
+!       IL=ILNBLNK( fName )
 c      WRITE(fullName,'(2a,i10.10)') fName(1:IL),'.',myIter
 c     ELSE
 c      fullName=fName
@@ -378,11 +371,36 @@ c     ENDIF
       useCurrentDir = .FALSE.
       fType='RL'
 #ifdef ALLOW_MDSIO
+      fUnit1 = fileHash%get1(trim(fName))
+      fUnit2 = fileHash%get1(trim(fName) // '.data')
+      if(fUnit1 .ne. -999 ) then
+        globalFile = fileHash%get2(trim(fName))
+        fileIsOpen = fileHash%get3(trim(fName))
+        CALL MDS_READ_FIELD2(
+     I                     fUnit1, globalFile, fileIsOpen,
+     I                     fPrec, useCurrentDir,
+     I                     fType, nNz, 1, nNz,
+     O                     field, dummyRS,
+     I                     iRec, myThid )
+      elseif (fUnit2 .ne. -999) then
+        globalFile = fileHash%get2(trim(fName) // '.data')
+        fileIsOpen = fileHash%get3(trim(fName) // '.data')
+        CALL MDS_READ_FIELD2(
+     I                     fUnit2, globalFile, fileIsOpen,
+     I                     fPrec, useCurrentDir,
+     I                     fType, nNz, 1, nNz,
+     O                     field, dummyRS,
+     I                     iRec, myThid )
+      else
+!      WRITE(msgBuf,'(A,A)') ' READ_REC_3D_RL: ',fName(1:IL)
+!      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+!     &                          SQUEEZE_RIGHT, myThid)
       CALL MDS_READ_FIELD(
      I                     fName, fPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     field, dummyRS,
      I                     iRec, myThid )
+      endif
 #endif
       RETURN
       END

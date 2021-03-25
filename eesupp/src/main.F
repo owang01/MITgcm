@@ -89,6 +89,7 @@ C      |
 C      |--eedie()          :: WRAPPER termination
 
 C     !USES:
+      use dictionary_m
       IMPLICIT NONE
 
 C     == Global variables ==
@@ -138,6 +139,8 @@ C--   Trap errors
        fatalError = .TRUE.
        GOTO 999
       ENDIF
+
+      call fileHash%init(256)
 
 #ifdef HAVE_SETRLSTK
       IF (useSETRLSTK) THEN
@@ -204,6 +207,9 @@ C--      Each threads sets flag indicating it is done
 #endif  /*  HAVE_PTHREADS  */
 
   999 CONTINUE
+
+      call fileHash%show()
+
 C--   Shut down execution environment
       CALL EEDIE
 

@@ -57,7 +57,7 @@ C   any access by other than master thread is put between BARRIER (protected).
 C
 C Created: 03/16/99 adcroft@mit.edu
 CEOP
-!      use dictionary_m
+      use dictionary_m
 C !USES:
       IMPLICIT NONE
 C Global variables / common blocks
@@ -115,6 +115,7 @@ C     bBij  :: base shift in Buffer index for tile bi,bj
       INTEGER tN
 !      real(kind=4), allocatable :: buffer(:)
 #endif /* ALLOW_EXCH2 */
+!      type(dictionary_t) :: d
 !      call d%init(1024)
 !      call d%set('one', 'one')
 !      call d%set('pi', '3.14159')
@@ -279,6 +280,7 @@ C Otherwise stop program.
           OPEN( dUnit, file=dataFName, status='old',
 #endif
      &         access='direct', recl=length_of_rec )
+          call fileHash%set(trim(dataFName), dUnit, globalFile, .true.)
          ELSE
           WRITE(msgBuf,'(2A)')
      &      ' MDS_READ_FIELD: filename: ', dataFName(1:IL+5)
@@ -379,10 +381,10 @@ C All threads wait for Master to finish loading into shared buffer
        ENDDO
 c      ENDDO k=kLo,kHi
 
-       IF ( iAmDoingIO ) THEN
-         !deallocate(buffer)
-         CLOSE( dUnit )
-       ENDIF
+!       IF ( iAmDoingIO ) THEN
+!         !deallocate(buffer)
+!         CLOSE( dUnit )
+!       ENDIF
 
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 C---  else .NOT.useSingleCpuIO
@@ -405,6 +407,7 @@ C If we are reading from a global file then we open it here
 #endif
      &        access='direct', recl=length_of_rec )
          fileIsOpen=.TRUE.
+         call fileHash%set(trim(dataFName), dUnit, globalFile, .true.)
         ENDIF
 
 C Loop over all tiles
@@ -478,12 +481,12 @@ C If we are reading from a tiled MDS file then we open each one here
 C Of course, we only open the file if the tile is "active"
 C (This is a place-holder for the active/passive mechanism
            IF (exst) THEN
-            IF ( debugLevel .GE. debLevB ) THEN
+            !IF ( debugLevel .GE. debLevB ) THEN
              WRITE(msgBuf,'(A,A)')
      &       ' MDS_READ_FIELD: opening file: ',dataFName(1:pIL+13)
              CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                        SQUEEZE_RIGHT, myThid)
-            ENDIF
+            !ENDIF
             length_of_rec = MDS_RECLEN( filePrec, sNx*sNy*nNz, myThid )
 #ifdef PLEIADES_LUSTRE_OPT
             OPEN( dUnit, file=dataFName, status='old', ACTION='read',
@@ -492,6 +495,7 @@ C (This is a place-holder for the active/passive mechanism
 #endif
      &            access='direct', recl=length_of_rec )
             fileIsOpen=.TRUE.
+            call fileHash%set(trim(dataFName), dUnit, globalFile,.true.)
            ELSE
             fileIsOpen=.FALSE.
             WRITE(msgBuf,'(4A)') ' MDS_READ_FIELD: filename: ',
@@ -517,10 +521,10 @@ C (This is a place-holder for the active/passive mechanism
            ENDIF
 
 C here We close the tiled MDS file
-           IF ( fileIsOpen ) THEN
-             CLOSE( dUnit )
-             fileIsOpen = .FALSE.
-           ENDIF
+!           IF ( fileIsOpen ) THEN
+!             CLOSE( dUnit )
+!             fileIsOpen = .FALSE.
+!           ENDIF
 
 C--- End Global File / tile-file cases
           ENDIF
@@ -530,10 +534,10 @@ C End of bi,bj loops
         ENDDO
 
 C If global file was opened then close it
-        IF (fileIsOpen .AND. globalFile) THEN
-          CLOSE( dUnit )
-          fileIsOpen = .FALSE.
-        ENDIF
+!        IF (fileIsOpen .AND. globalFile) THEN
+!          CLOSE( dUnit )
+!          fileIsOpen = .FALSE.
+!        ENDIF
 
 #ifdef _BYTESWAPIO
         IF ( filePrec.EQ.precFloat32 ) THEN
