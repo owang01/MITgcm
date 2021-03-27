@@ -83,7 +83,11 @@ C     print a (weak) warning if data.ggl90 is found
      &                    SQUEEZE_RIGHT, myThid )
       errIO = 0
       CALL OPEN_COPY_DATA_FILE(
+#ifdef PLEIADES_LUSTRE_OPT
+     I                     '/tmp/data.ggl90', 'GGL90_READPARMS',
+#else
      I                          'data.ggl90', 'GGL90_READPARMS',
+#endif
      O                          iUnit,
      I                          myThid )
 

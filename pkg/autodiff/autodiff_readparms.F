@@ -81,7 +81,11 @@ C-- pkg/seaice related switches
       CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                    SQUEEZE_RIGHT, myThid )
       CALL OPEN_COPY_DATA_FILE(
+#ifdef PLEIADES_LUSTRE_OPT
+     I                '/tmp/data.autodiff', 'AUTODIFF_READPARMS',
+#else
      I                     'data.autodiff', 'AUTODIFF_READPARMS',
+#endif
      O                     iUnit,
      I                     myThid )
 

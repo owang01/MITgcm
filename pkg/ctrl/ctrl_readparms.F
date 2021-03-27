@@ -497,7 +497,11 @@ c--     Next, read the cost data file.
      &                    SQUEEZE_RIGHT , 1)
 
         CALL OPEN_COPY_DATA_FILE(
+#ifdef PLEIADES_LUSTRE_OPT
+     I                     '/tmp/data.ctrl', 'CTRL_READPARMS',
+#else
      I                          'data.ctrl', 'CTRL_READPARMS',
+#endif
      O                          iUnit,
      I                          myThid )
 

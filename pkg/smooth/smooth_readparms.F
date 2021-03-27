@@ -89,7 +89,11 @@ C--   Read settings from model parameter file "data.smooth".
      &                    SQUEEZE_RIGHT , 1)
 
       CALL OPEN_COPY_DATA_FILE(
+#ifdef PLEIADES_LUSTRE_OPT
+     I                     '/tmp/data.smooth', 'SMOOTH_READPARMS',
+#else
      I                          'data.smooth', 'SMOOTH_READPARMS',
+#endif
      O                          iUnit,
      I                          myThid )
 

@@ -92,7 +92,11 @@ c--     Set default values.
      &                    SQUEEZE_RIGHT , 1)
 
         CALL OPEN_COPY_DATA_FILE(
+#ifdef PLEIADES_LUSTRE_OPT
+     I                     '/tmp/data.optim', 'OPTIM_READPARMS',
+#else
      I                          'data.optim', 'OPTIM_READPARMS',
+#endif
      O                          iUnit,
      I                          myThid )
 

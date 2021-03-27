@@ -60,7 +60,11 @@ C     print a (weak) warning if data.sbo is found
      &                    SQUEEZE_RIGHT, myThid )
 
       CALL OPEN_COPY_DATA_FILE(
+#ifdef PLEIADES_LUSTRE_OPT
+     I                     '/tmp/data.sbo', 'SBO_READPARMS',
+#else
      I                          'data.sbo', 'SBO_READPARMS',
+#endif
      O                          iUnit,
      I                          myThid )
 

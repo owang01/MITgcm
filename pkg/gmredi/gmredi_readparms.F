@@ -167,7 +167,11 @@ C--   Default values for K3D
       CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                    SQUEEZE_RIGHT , 1)
       CALL OPEN_COPY_DATA_FILE(
+#ifdef PLEIADES_LUSTRE_OPT
+     I                     '/tmp/data.gmredi', 'GM_READPARMS',
+#else
      I                          'data.gmredi', 'GM_READPARMS',
+#endif
      O                          iUnit,
      I                          myThid )
 
