@@ -37,6 +37,7 @@ C- skip reserved unit numbers
      &       .AND. ii.NE.standardMessageUnit
      &       .AND. ii.NE.scrUnit1   .AND. ii.NE.scrUnit2
      &       .AND. ii.NE.eeDataUnit .AND. ii.NE.modelDataUnit
+     &       .AND. ii.NE.30
      &     ) THEN
           INQUIRE(unit=ii,iostat=ios,opened=op)
           IF ( ios.NE.0 ) THEN
