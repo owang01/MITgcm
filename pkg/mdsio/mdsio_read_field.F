@@ -97,7 +97,7 @@ C !FUNCTIONS
 
 C !LOCAL VARIABLES:
 C     bBij  :: base shift in Buffer index for tile bi,bj
-      CHARACTER*(MAX_LEN_FNAM) dataFName,pfName
+      CHARACTER*(MAX_LEN_MBUF) dataFName,pfName,FullName,aAction,aDirect
       CHARACTER*(MAX_LEN_MBUF) msgBuf
       LOGICAL exst
       LOGICAL globalFile, fileIsOpen
@@ -111,16 +111,12 @@ C     bBij  :: base shift in Buffer index for tile bi,bj
       INTEGER bBij
       INTEGER tNx, tNy, global_nTx
       INTEGER tBx, tBy, iGjLoc, jGjLoc
+      INTEGER fUnit, fUnit2, iUnit,iNumber,iRecl
+      LOGICAL lOpened
 #ifdef ALLOW_EXCH2
       INTEGER tN
 !      real(kind=4), allocatable :: buffer(:)
 #endif /* ALLOW_EXCH2 */
-!      type(dictionary_t) :: d
-!      call d%init(1024)
-!      call d%set('one', 'one')
-!      call d%set('pi', '3.14159')
-!      write(*,*) 'one', ' = ', d%get('one')
-!      write(*,*) 'pi', ' = ', d%get('pi')
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 C Set dimensions:
       xSize = Nx
@@ -143,6 +139,260 @@ C Assume nothing
 
 C Only do I/O if I am the master thread (and mpi process 0 IF useSingleCpuIO):
       iAmDoingIO = MASTER_CPU_IO(myThid)
+
+! Abreviated path for GLOBAL files that are already open.
+! -------------------------------------------------------
+      fUnit = fileHash%get1(trim(fName))
+      dataFName = trim(fName) // '.data'
+      fUnit2 = fileHash%get1(trim(dataFName))
+
+!      if ((fUnit .ne. -999) .and. (fUnit2 .ne. -999))
+!     &  write(*,*) 'MDS_READ_FIELD: Both files!'
+
+      if ((fUnit .ne. -999) .or. (fUnit2 .ne. -999)) then
+        if (fUnit2 .ne. -999) then
+!          WRITE(msgBuf,'(A,A,A,3I4)')
+!     &      ' MDS_READ_FIELD: Fast path ',trim(dataFName), ' ', fUnit,
+!     &        fileHash%get3(trim(dataFName)),filePrec
+!          CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+!     &                      SQUEEZE_RIGHT, myThid)
+          fUnit = fUnit2
+        else
+!        WRITE(msgBuf,'(A,A,A,3I4)')
+!     &      ' MDS_READ_FIELD: Fast path ',trim(fName), ' ', fUnit,
+!     &        fileHash%get3(trim(fName)), filePrec 
+!        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+!     &                      SQUEEZE_RIGHT, myThid)
+        endif
+
+!        INQUIRE (fUnit, OPENED=lOpened, NAME=FullName, ACTION=aAction,
+!     &           NUMBER=iUnit, DIRECT=aDirect, RECL=iRecl)
+
+!        WRITE(msgBuf,'(3A,3I4,L3)')
+!     &      ' MDS_READ_FIELD: Fast path inq ',trim(fName), ' ', fUnit,
+!     &        iUnit,filePrec, lOpened
+!        CALL PRINT_MESSAGE( trim(msgBuf), standardMessageUnit,
+!     &                      SQUEEZE_RIGHT, myThid)
+
+
+        globalFile = .true.
+C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
+
+      IF ( useSingleCPUIO ) THEN
+
+       DO k=kLo,kHi
+
+C master thread of process 0, only, read from file
+        IF ( iAmDoingIO ) THEN
+          irec = 1 + k-kLo + (irecord-1)*nNz
+
+!        WRITE(msgBuf,'(A,2I4,3A,4I6,I8)')
+!     &   ' MDS_READ_FIELD: Fast path reading ', k,irec,' ',trim(fName),
+!     &  ' ',fUnit, fileHash%get3(trim(fName)), filePrec,xSize*ySize
+!        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+!     &                      SQUEEZE_RIGHT, myThid)
+
+          IF (filePrec .EQ. precFloat32) THEN
+           READ(fUnit,rec=irec) ( xy_buffer_r4(i),i=1,xSize*ySize )
+#ifdef _BYTESWAPIO
+           CALL MDS_BYTESWAPR4( xSize*ySize, xy_buffer_r4 )
+#endif
+          ELSE
+           READ(fUnit,rec=irec) ( xy_buffer_r8(i),i=1,xSize*ySize )
+#ifdef _BYTESWAPIO
+           CALL MDS_BYTESWAPR8( xSize*ySize, xy_buffer_r8 )
+#endif
+          ENDIF
+C- endif iAmDoingIO
+!  1       REWIND( fUnit )
+        ENDIF
+
+C Wait for all thread to finish. This prevents other threads to continue
+C  to acces shared buffer while master thread is loading data into
+        CALL BAR2( myThid )
+
+        IF ( filePrec.EQ.precFloat32 ) THEN
+          CALL SCATTER_2D_R4(
+     U                        xy_buffer_r4,
+     O                        sharedLocBuf_r4,
+     I                        xSize, ySize,
+     I                        useExch2ioLayOut, .FALSE., myThid )
+C All threads wait for Master to finish loading into shared buffer
+          CALL BAR2( myThid )
+          IF ( arrType.EQ.'RS' ) THEN
+            CALL MDS_PASS_R4toRS( sharedLocBuf_r4, fldRS,
+     I                  0, 0, 1, k, kSize, 0, 0, .TRUE., myThid )
+          ELSEIF ( arrType.EQ.'RL' ) THEN
+            CALL MDS_PASS_R4toRL( sharedLocBuf_r4, fldRL,
+     I                  0, 0, 1, k, kSize, 0, 0, .TRUE., myThid )
+          ELSE
+            WRITE(msgBuf,'(A)')
+     &          ' MDS_READ_FIELD: illegal value for arrType'
+            CALL PRINT_ERROR( msgBuf, myThid )
+            CALL ALL_PROC_DIE( myThid )
+            STOP 'ABNORMAL END: S/R MDS_READ_FIELD'
+          ENDIF
+        ELSEIF ( filePrec.EQ.precFloat64 ) THEN
+          CALL SCATTER_2D_R8(
+     U                        xy_buffer_r8,
+     O                        sharedLocBuf_r8,
+     I                        xSize, ySize,
+     I                        useExch2ioLayOut, .FALSE., myThid )
+C All threads wait for Master to finish loading into shared buffer
+          CALL BAR2( myThid )
+          IF ( arrType.EQ.'RS' ) THEN
+            CALL MDS_PASS_R8toRS( sharedLocBuf_r8, fldRS,
+     I                  0, 0, 1, k, kSize, 0, 0, .TRUE., myThid )
+          ELSEIF ( arrType.EQ.'RL' ) THEN
+            CALL MDS_PASS_R8toRL( sharedLocBuf_r8, fldRL,
+     I                  0, 0, 1, k, kSize, 0, 0, .TRUE., myThid )
+          ELSE
+            WRITE(msgBuf,'(A)')
+     &          ' MDS_READ_FIELD: illegal value for arrType'
+            CALL PRINT_ERROR( msgBuf, myThid )
+            CALL ALL_PROC_DIE( myThid )
+            STOP 'ABNORMAL END: S/R MDS_READ_FIELD'
+          ENDIF
+        ELSE
+          WRITE(msgBuf,'(A)')
+     &            ' MDS_READ_FIELD: illegal value for filePrec'
+          CALL PRINT_ERROR( msgBuf, myThid )
+          CALL ALL_PROC_DIE( myThid )
+          STOP 'ABNORMAL END: S/R MDS_READ_FIELD'
+        ENDIF
+
+       ENDDO
+c      ENDDO k=kLo,kHi
+
+C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
+C---  else .NOT.useSingleCpuIO
+      ELSE
+
+C Wait for all thread to finish. This prevents other threads to continue
+C  to acces 3-D buffer while master thread is reading
+c      CALL BAR2( myThid )
+
+C Only do I/O if I am the master thread
+       IF ( iAmDoingIO ) THEN
+
+C Loop over all tiles
+        DO bj=1,nSy
+         DO bi=1,nSx
+          bBij = sNx*sNy*nNz*( bi-1 + (bj-1)*nSx )
+
+           tNx = sNx
+           tNy = sNy
+           global_nTx = xSize/sNx
+           tBx = myXGlobalLo-1 + (bi-1)*sNx
+           tBy = myYGlobalLo-1 + (bj-1)*sNy
+           iGjLoc = 0
+           jGjLoc = 1
+#ifdef ALLOW_EXCH2
+           IF ( useExch2ioLayOut ) THEN
+             tN = W2_myTileList(bi,bj)
+c            tNx = exch2_tNx(tN)
+c            tNy = exch2_tNy(tN)
+c            global_nTx = exch2_global_Nx/tNx
+             tBx = exch2_txGlobalo(tN) - 1
+             tBy = exch2_tyGlobalo(tN) - 1
+             IF   ( exch2_mydNx(tN) .GT. xSize ) THEN
+C-           face x-size larger than glob-size : fold it
+               iGjLoc = 0
+               jGjLoc = exch2_mydNx(tN) / xSize
+             ELSEIF ( exch2_tNy(tN) .GT. ySize ) THEN
+C-           tile y-size larger than glob-size : make a long line
+               iGjLoc = exch2_mydNx(tN)
+               jGjLoc = 0
+             ELSE
+C-           default (face fit into global-IO-array)
+               iGjLoc = 0
+               jGjLoc = 1
+             ENDIF
+           ENDIF
+#endif /* ALLOW_EXCH2 */
+
+           DO k=kLo,kHi
+            DO j=1,tNy
+             irec = 1 + ( tBx + (j-1)*iGjLoc )/sNx
+     &                + ( tBy + (j-1)*jGjLoc )*global_nTx
+     &            +( k-kLo + (irecord-1)*nNz )*global_nTx*ySize
+             i1 = bBij + 1 + (j-1)*sNx + (k-kLo)*sNx*sNy
+             i2 = bBij +         j*sNx + (k-kLo)*sNx*sNy
+             IF ( filePrec.EQ.precFloat32 ) THEN
+              READ(fUnit,rec=irec) (shared3dBuf_r4(i),i=i1,i2)
+             ELSE
+              READ(fUnit,rec=irec) (shared3dBuf_r8(i),i=i1,i2)
+             ENDIF
+C End of j,k loops
+            ENDDO
+           ENDDO
+
+C End of bi,bj loops
+         ENDDO
+        ENDDO
+
+#ifdef _BYTESWAPIO
+        IF ( filePrec.EQ.precFloat32 ) THEN
+          CALL MDS_BYTESWAPR4( sNx*sNy*nNz*nSx*nSy, shared3dBuf_r4 )
+        ELSE
+          CALL MDS_BYTESWAPR8( sNx*sNy*nNz*nSx*nSy, shared3dBuf_r8 )
+        ENDIF
+#endif
+
+C- endif iAmDoingIO
+         !REWIND( fUnit )
+       ENDIF
+
+C All threads wait for Master to finish reading into shared buffer
+       CALL BAR2( myThid )
+
+C---    Copy from 3-D buffer to fldRL/RS (multi-threads):
+        IF ( filePrec.EQ.precFloat32 ) THEN
+          IF ( arrType.EQ.'RS' ) THEN
+            CALL MDS_PASS_R4toRS( shared3dBuf_r4, fldRS,
+     I              0, 0, nNz, kLo, kSize, 0, 0, .TRUE., myThid )
+          ELSEIF ( arrType.EQ.'RL' ) THEN
+            CALL MDS_PASS_R4toRL( shared3dBuf_r4, fldRL,
+     I              0, 0, nNz, kLo, kSize, 0, 0, .TRUE., myThid )
+          ELSE
+            WRITE(msgBuf,'(A)')
+     &         ' MDS_READ_FIELD: illegal value for arrType'
+            CALL PRINT_ERROR( msgBuf, myThid )
+            CALL ALL_PROC_DIE( myThid )
+            STOP 'ABNORMAL END: S/R MDS_READ_FIELD'
+          ENDIF
+        ELSEIF ( filePrec.EQ.precFloat64 ) THEN
+          IF ( arrType.EQ.'RS' ) THEN
+            CALL MDS_PASS_R8toRS( shared3dBuf_r8, fldRS,
+     I              0, 0, nNz, kLo, kSize, 0, 0, .TRUE., myThid )
+          ELSEIF ( arrType.EQ.'RL' ) THEN
+            CALL MDS_PASS_R8toRL( shared3dBuf_r8, fldRL,
+     I              0, 0, nNz, kLo, kSize, 0, 0, .TRUE., myThid )
+          ELSE
+            WRITE(msgBuf,'(A)')
+     &         ' MDS_READ_FIELD: illegal value for arrType'
+            CALL PRINT_ERROR( msgBuf, myThid )
+            CALL ALL_PROC_DIE( myThid )
+            STOP 'ABNORMAL END: S/R MDS_READ_FIELD'
+          ENDIF
+        ELSE
+          WRITE(msgBuf,'(A)')
+     &         ' MDS_READ_FIELD: illegal value for filePrec'
+          CALL PRINT_ERROR( msgBuf, myThid )
+          CALL ALL_PROC_DIE( myThid )
+          STOP 'ABNORMAL END: S/R MDS_READ_FIELD'
+        ENDIF
+
+C Wait for all threads to finish getting data from 3-D shared buffer.
+C  This prevents the master-thread to change the buffer content before
+C  every one got his data.
+       CALL BAR2( myThid )
+
+C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
+C     if useSingleCpuIO / else / end
+      ENDIF
+
+      else ! File not opened yet.  Go through full processing
 
 C File name should not be too long:
 C    IL(+pIL if not useCurrentDir)(+5: '.data')(+8: bi,bj) =< MAX_LEN_FNAM
@@ -219,7 +469,7 @@ C check for 3-D Buffer size:
       ENDIF
 
 C Only do I/O if I am the master thread
-      IF ( iAmDoingIO ) THEN
+!      IF ( iAmDoingIO ) THEN
 
 C Assign special directory
         IF ( useCurrentDir .OR. pIL.EQ.0 ) THEN
@@ -237,8 +487,9 @@ C Check first for global file with simple name (ie. fName)
         INQUIRE( file=dataFName, exist=exst )
         IF (exst) THEN
           IF ( debugLevel .GE. debLevB ) THEN
-            WRITE(msgBuf,'(A,A)')
-     &      ' MDS_READ_FIELD: opening global file1: ',dataFName(1:IL)
+            WRITE(msgBuf,'(3A,I4)')
+     &      ' MDS_READ_FIELD: opening global file1: ',
+     &        dataFName(1:IL), ' ', dUnit
             CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                          SQUEEZE_RIGHT, myThid)
           ENDIF
@@ -251,8 +502,9 @@ C If negative check for global file with MDS name (ie. fName.data)
           INQUIRE( file=dataFName, exist=exst )
           IF (exst) THEN
            IF ( debugLevel .GE. debLevB ) THEN
-            WRITE(msgBuf,'(A,A)')
-     &      ' MDS_READ_FIELD: opening global file2: ',dataFName(1:IL+5)
+            WRITE(msgBuf,'(3A,I4)')
+     &      ' MDS_READ_FIELD: opening global file2: ',
+     &       dataFName(1:IL+5), ' ', dUnit
             CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                          SQUEEZE_RIGHT, myThid)
            ENDIF
@@ -261,9 +513,11 @@ C If negative check for global file with MDS name (ie. fName.data)
         ENDIF
 
 C- endif iAmDoingIO
-      ENDIF
+!      ENDIF
 
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
+! All ranks need to know the file name in order to make the right choice above
+      call fileHash%set(trim(dataFName), -99, globalFile, filePrec)
 
       IF ( useSingleCPUIO ) THEN
 
@@ -280,7 +534,16 @@ C Otherwise stop program.
           OPEN( dUnit, file=dataFName, status='old',
 #endif
      &         access='direct', recl=length_of_rec )
-          call fileHash%set(trim(dataFName), dUnit, globalFile, .true.)
+
+
+!            WRITE(msgBuf,'(3A,I4,I8)')
+!     &      ' MDS_READ_FIELD: Opened global file: ',
+!     &       trim(dataFName), ' ', dUnit, length_of_rec
+!            CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+!     &                          SQUEEZE_RIGHT, myThid)
+
+
+          call fileHash%set(trim(dataFName), dUnit, globalFile,filePrec)
          ELSE
           WRITE(msgBuf,'(2A)')
      &      ' MDS_READ_FIELD: filename: ', dataFName(1:IL+5)
@@ -302,14 +565,15 @@ C- endif iAmDoingIO
 C master thread of process 0, only, read from file
         IF ( iAmDoingIO ) THEN
           irec = 1 + k-kLo + (irecord-1)*nNz
-          IF (filePrec .EQ. precFloat32) THEN
-!            WRITE(msgBuf,'(A,A,I3,5I8)')
-!     & 'MDS_READ_FIELD: reading: ',dataFName(1:IL),k,irec,xSize*ySize,
-!     &                sizeof(xy_buffer_r4),xyBuffer_size,length_of_rec
-!            CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
-!     &                          SQUEEZE_RIGHT, myThid)
 
-           READ(dUnit,rec=irec) ( xy_buffer_r4(i),i=1,xSize*ySize ) ! 1,105300
+!        WRITE(msgBuf,'(A,2I4,3A,4I6,I8)')
+!     &   ' MDS_READ_FIELD: First pass reading ', k,irec,' ',trim(fName),
+!     &  ' ',dUnit, fileHash%get3(trim(fName)), filePrec,xSize*ySize
+!        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+!     &                      SQUEEZE_RIGHT, myThid)
+
+          IF (filePrec .EQ. precFloat32) THEN
+           READ(dUnit,rec=irec) ( xy_buffer_r4(i),i=1,xSize*ySize )
            !READ(dUnit,rec=irec) buffer
 #ifdef _BYTESWAPIO
            CALL MDS_BYTESWAPR4( xSize*ySize, xy_buffer_r4 )
@@ -381,10 +645,21 @@ C All threads wait for Master to finish loading into shared buffer
        ENDDO
 c      ENDDO k=kLo,kHi
 
-!       IF ( iAmDoingIO ) THEN
+       IF ( iAmDoingIO ) THEN
+
+!        INQUIRE (dUnit, OPENED=lOpened, NAME=FullName, ACTION=aAction,
+!     &           NUMBER=iUnit, DIRECT=aDirect, RECL=iRecl)
+
+!        WRITE(msgBuf,'(3A,3I4,L3)')
+!     &      ' MDS_READ_FIELD: First pass inq2 ',trim(fName), ' ', dUnit,
+!     &        iUnit,filePrec, lOpened
+!        CALL PRINT_MESSAGE( trim(msgBuf), standardMessageUnit,
+!     &                      SQUEEZE_RIGHT, myThid)
+
 !         !deallocate(buffer)
 !         CLOSE( dUnit )
-!       ENDIF
+         !REWIND( dUnit )
+       ENDIF
 
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 C---  else .NOT.useSingleCpuIO
@@ -407,7 +682,15 @@ C If we are reading from a global file then we open it here
 #endif
      &        access='direct', recl=length_of_rec )
          fileIsOpen=.TRUE.
-         call fileHash%set(trim(dataFName), dUnit, globalFile, .true.)
+
+!           WRITE(msgBuf,'(3A,I4,I8)')
+!     &      ' MDS_READ_FIELD: Opened global file (multi): ',
+!     &       trim(dataFName), ' ', dUnit, length_of_rec
+!            CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+!     &                          SQUEEZE_RIGHT, myThid)
+
+
+         call fileHash%set(trim(dataFName), dUnit, globalFile, filePrec)
         ENDIF
 
 C Loop over all tiles
@@ -481,12 +764,12 @@ C If we are reading from a tiled MDS file then we open each one here
 C Of course, we only open the file if the tile is "active"
 C (This is a place-holder for the active/passive mechanism
            IF (exst) THEN
-            !IF ( debugLevel .GE. debLevB ) THEN
+            IF ( debugLevel .GE. debLevB ) THEN
              WRITE(msgBuf,'(A,A)')
-     &       ' MDS_READ_FIELD: opening file: ',dataFName(1:pIL+13)
+     &       ' MDS_READ_FIELD: opening tiled file: ',dataFName(1:pIL+13)
              CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                        SQUEEZE_RIGHT, myThid)
-            !ENDIF
+            ENDIF
             length_of_rec = MDS_RECLEN( filePrec, sNx*sNy*nNz, myThid )
 #ifdef PLEIADES_LUSTRE_OPT
             OPEN( dUnit, file=dataFName, status='old', ACTION='read',
@@ -495,7 +778,7 @@ C (This is a place-holder for the active/passive mechanism
 #endif
      &            access='direct', recl=length_of_rec )
             fileIsOpen=.TRUE.
-            call fileHash%set(trim(dataFName), dUnit, globalFile,.true.)
+            !call fileHash%set(trim(dataFName), dUnit, globalFile,.true.)
            ELSE
             fileIsOpen=.FALSE.
             WRITE(msgBuf,'(4A)') ' MDS_READ_FIELD: filename: ',
@@ -521,10 +804,11 @@ C (This is a place-holder for the active/passive mechanism
            ENDIF
 
 C here We close the tiled MDS file
-!           IF ( fileIsOpen ) THEN
+           IF ( fileIsOpen ) THEN
 !             CLOSE( dUnit )
 !             fileIsOpen = .FALSE.
-!           ENDIF
+             !REWIND( dUnit )
+           ENDIF
 
 C--- End Global File / tile-file cases
           ENDIF
@@ -534,10 +818,11 @@ C End of bi,bj loops
         ENDDO
 
 C If global file was opened then close it
-!        IF (fileIsOpen .AND. globalFile) THEN
+        IF (fileIsOpen .AND. globalFile) THEN
 !          CLOSE( dUnit )
 !          fileIsOpen = .FALSE.
-!        ENDIF
+          !REWIND( dUnit )
+        ENDIF
 
 #ifdef _BYTESWAPIO
         IF ( filePrec.EQ.precFloat32 ) THEN
@@ -598,6 +883,7 @@ C  every one got his data.
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 C     if useSingleCpuIO / else / end
       ENDIF
+      endif
 
       RETURN
       END
