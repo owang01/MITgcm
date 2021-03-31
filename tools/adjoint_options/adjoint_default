@@ -25,9 +25,9 @@ if test "x$ALWAYS_USE_F90" = "x1" ; then
   FTL_TAF_FLAGS="-f90 $FTL_TAF_FLAGS"
   SVD_TAF_FLAGS="-f90 $SVD_TAF_FLAGS"
 else
-  AD_TAF_FLAGS="-f08 $AD_TAF_FLAGS"
-  FTL_TAF_FLAGS="-f08 $FTL_TAF_FLAGS"
-  SVD_TAF_FLAGS="-f08 $SVD_TAF_FLAGS"
+  AD_TAF_FLAGS="-f77 $AD_TAF_FLAGS"
+  FTL_TAF_FLAGS="-f77 $FTL_TAF_FLAGS"
+  SVD_TAF_FLAGS="-f77 $SVD_TAF_FLAGS"
 fi
 
 #- switch to fastopt.net TAF server (instead of default fastopt.de):
