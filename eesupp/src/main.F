@@ -140,7 +140,7 @@ C--   Trap errors
        GOTO 999
       ENDIF
 
-      call fileHash%init(256)
+      call fileHash%init(1024)
 
 #ifdef HAVE_SETRLSTK
       IF (useSETRLSTK) THEN
@@ -208,7 +208,7 @@ C--      Each threads sets flag indicating it is done
 
   999 CONTINUE
 
-      call fileHash%show()
+!      call fileHash%show()
 
 C--   Shut down execution environment
       CALL EEDIE
