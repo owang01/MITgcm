@@ -97,7 +97,7 @@ C !FUNCTIONS
 
 C !LOCAL VARIABLES:
 C     bBij  :: base shift in Buffer index for tile bi,bj
-      CHARACTER*(MAX_LEN_MBUF) dataFName,pfName,FullName,aAction,aDirect
+      CHARACTER*(MAX_LEN_MBUF) dataFName,pfName!,FullName,aAction,aDirect
       CHARACTER*(MAX_LEN_MBUF) msgBuf
       LOGICAL exst
       LOGICAL globalFile, fileIsOpen
@@ -111,8 +111,9 @@ C     bBij  :: base shift in Buffer index for tile bi,bj
       INTEGER bBij
       INTEGER tNx, tNy, global_nTx
       INTEGER tBx, tBy, iGjLoc, jGjLoc
-      INTEGER fUnit, fUnit2, iUnit,iNumber,iRecl
-      LOGICAL lOpened
+      INTEGER fUnit, fUnit2
+!      INTEGER iUnit,iNumber,iRecl
+!      LOGICAL lOpened
 #ifdef ALLOW_EXCH2
       INTEGER tN
 !      real(kind=4), allocatable :: buffer(:)
@@ -160,7 +161,7 @@ C Only do I/O if I am the master thread (and mpi process 0 IF useSingleCpuIO):
         else
 !        WRITE(msgBuf,'(A,A,A,3I4)')
 !     &      ' MDS_READ_FIELD: Fast path ',trim(fName), ' ', fUnit,
-!     &        fileHash%get3(trim(fName)), filePrec 
+!     &        fileHash%get3(trim(fName)), filePrec
 !        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
 !     &                      SQUEEZE_RIGHT, myThid)
         endif
