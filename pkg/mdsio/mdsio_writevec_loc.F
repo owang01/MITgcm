@@ -43,6 +43,7 @@ C to floatPrec32 or floatPrec64.
 C |irecord|=iRec is the record number to be written and must be >=1.
 
 C !USES:
+      use dictionary_m
       IMPLICIT NONE
 
 C Global variables / common blocks
@@ -172,12 +173,15 @@ C--   Open the file:
      &            access='direct', recl=length_of_rec )
             fileIsOpen=.TRUE.
           ENDIF
-          IF ( debugLevel.GE.debLevC ) THEN
+
+          call fileHash%set(trim(dataFName), dUnit, .FALSE., filePrec)
+
+          !IF ( debugLevel.GE.debLevC ) THEN
             WRITE(msgBuf,'(2A)')
      &      ' MDS_WRITEVEC_LOC: open file: ',dataFname(1:pIL+13)
             CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                          SQUEEZE_RIGHT , 1)
-          ENDIF
+          !ENDIF
 C- End if block: File Unit is already open / Need to open it
         ENDIF
 
