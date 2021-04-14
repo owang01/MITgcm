@@ -203,11 +203,19 @@ c     >>> Initialise control vector for optimcycle=0 <<<
 c     >>> Write gradient vector <<<
           lxxadxx   = .FALSE.
           ictrlgrad = 2
+#ifdef PLEIADES_LUSTRE_OPT
+          write(cfile(1:128),'(4a,i4.4)')
+     &         trim(costname),'_',yctrlid(1:10),
+     &         yctrlposunpack(1:4), optimcycle
+          write(standardMessageUnit,*) 'ph-pack: unpacking ',
+     &         trim(costname)
+#else
           write(cfile(1:128),'(4a,i4.4)')
      &         costname(1:9),'_',yctrlid(1:10),
      &         yctrlposunpack(1:4), optimcycle
           write(standardMessageUnit,*) 'ph-pack: unpacking ', 
      &         costname(1:9)
+#endif
        endif
 
 c--   Only Proc 0 will do I/O.

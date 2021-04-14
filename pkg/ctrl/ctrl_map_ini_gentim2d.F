@@ -51,6 +51,9 @@ C     == local variables ==
       character*(80) fnamegenOut
       character*(80) fnamegenTmp
       character*(80) fnamebase
+      character*(80) fname
+      character*(80) fnames(3)
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
       integer startrec
       integer endrec
       integer diffrec
@@ -73,7 +76,7 @@ C     == local variables ==
       integer i,j,k2
       INTEGER  ILNBLNK
       EXTERNAL ILNBLNK
-      integer ilgen
+      integer ilgen,il
 CEOP
 
 c--   Now, read the control vector.
@@ -142,6 +145,14 @@ C--   generic 2D control variables
         write(fnamegenTmp(1:80),'(2a,i10.10)')
      &       fnamebase(1:ilgen),'.tmp.',optimcycle
 
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,9A)')
+     & ' CTRL_MAP_INI_GENTIM2D: ', iarr,
+     & ' ', fnamebase, ' ', fnamegenIn, ' ',
+     & ' ', fnamegenOut, ' ', fnamegenTmp
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
 c-- docycle
 
         replicated_nrec=endrec
@@ -304,10 +315,28 @@ CADJ STORE xx_gentim2d_dummy = ctrltape, key = 1 , kind = isbyte
          do k2 = 1, maxCtrlProc
           if (xx_gentim2d_preproc(k2,iarr).EQ.'variaweight') jrec=irec
          enddo
+#ifdef PLEIADES_LUSTRE_OPT
+         !il = len_trim(xx_gentim2d_weight(iarr))
+         !WRITE(fname(1:80),'(A)') ' '
+         !WRITE(fname(1:il),'(A)') trim(xx_gentim2d_weight(iarr))
+         !call ctrl_set_fname( fname, fnames, myThid )
+         write(fname(1:80),'(2a)')
+     &   trim(tmpDir), trim(xx_gentim2d_weight(iarr))
+#ifdef DSK_DEBUG
+         WRITE(msgBuf,'(A,I4,6A)')
+     &   'CTRL_MAP_INI_GENTIM2D: ',jRec,' (',
+     &   trim(xx_gentim2d_weight(iarr)),')', ' (', trim(fname),')'
+         CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
+         CALL MDS_READ_FIELD( trim(fname),ctrlprec,
+     &    .FALSE.,'RL',1,1,1,wgentim2d(1-Olx,1-Oly,1,1,iarr),
+     &    dummyRS,jrec,myThid, .FALSE. )
+#else
          CALL MDS_READ_FIELD( xx_gentim2d_weight(iarr),ctrlprec,
      &    .FALSE.,'RL',1,1,1,wgentim2d(1-Olx,1-Oly,1,1,iarr),
-     &    dummyRS,jrec,myThid )
-
+     &    dummyRS,jrec,myThid, .FALSE. )
+#endif
 #ifdef ALLOW_SMOOTH
          IF (useSMOOTH) THEN
           IF (dowc01) call smooth_correl2d(xx_gen,maskC,numsmo,mythid)

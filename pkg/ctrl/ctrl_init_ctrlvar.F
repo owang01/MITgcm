@@ -53,6 +53,7 @@ c     == routine arguments ==
 
 c     == local variables ==
       character*( 80) fname(3)
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
       logical  exst
 
 c     _BEGIN_MASTER( mythid )
@@ -79,18 +80,46 @@ c     _END_MASTER( mythid )
 
          if ( whichxyz .EQ. '3d') then
 #if (defined (ALLOW_ADJOINT_RUN) || defined (ALLOW_TANGENTLINEAR_RUN))
-            if ( .NOT.doAdmTlm .OR. (doAdmTlm.AND.yadprefix.EQ.'ad') )
-     &           call ctrl_set_globfld_xyz( fname(2), ivarindex, mythid)
+          if ( .NOT.doAdmTlm .OR. (doAdmTlm.AND.yadprefix.EQ.'ad')) then
+#ifdef DSK_DEBUG
+              WRITE(msgBuf,'(A,A)')
+     &         'ctrl_init_ctrlvar: 3D ', trim(fname(2))
+              CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
 #endif
-            if ( ( doInitXX .AND. optimcycle.eq.0 ) .OR. doAdmTlm )
-     &           call ctrl_set_globfld_xyz( fname(1), ivarindex, mythid)
+              call ctrl_set_globfld_xyz( fname(2), ivarindex, mythid)
+#endif
+            endif
+            if ( ( doInitXX .AND. optimcycle.eq.0 ) .OR. doAdmTlm ) then
+#ifdef DSK_DEBUG
+              WRITE(msgBuf,'(A,A)')
+     &         'ctrl_init_ctrlvar: 3D ', trim(fname(1))
+              CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
+              call ctrl_set_globfld_xyz( fname(1), ivarindex, mythid)
+            endif
          else if ( whichxyz .EQ. 'xy') then
 #if (defined (ALLOW_ADJOINT_RUN) || defined (ALLOW_TANGENTLINEAR_RUN))
-            if ( .NOT.doAdmTlm .OR. (doAdmTlm.AND.yadprefix.EQ.'ad') )
-     &           call ctrl_set_globfld_xy( fname(2), ivarindex, mythid)
+          if (.NOT.doAdmTlm .OR. (doAdmTlm.AND.yadprefix.EQ.'ad') ) then
+#ifdef DSK_DEBUG
+              WRITE(msgBuf,'(A,A)')
+     &         'ctrl_init_ctrlvar: 2D ', trim(fname(2))
+              CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
 #endif
-            if ( ( doInitXX .AND. optimcycle.eq.0 ) .OR. doAdmTlm )
-     &           call ctrl_set_globfld_xy( fname(1), ivarindex, mythid )
+              call ctrl_set_globfld_xy( fname(2), ivarindex, mythid)
+          endif
+#endif
+            if ( ( doInitXX .AND. optimcycle.eq.0 ) .OR. doAdmTlm ) then
+#ifdef DSK_DEBUG
+              WRITE(msgBuf,'(A,A)')
+     &         'ctrl_init_ctrlvar: 2D ', trim(fname(1))
+              CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
+              call ctrl_set_globfld_xy( fname(1), ivarindex, mythid )
+            endif
          else if ( whichxyz .EQ. 'xz') then
 #if (defined (ALLOW_ADJOINT_RUN) || defined (ALLOW_TANGENTLINEAR_RUN))
             if ( .NOT.doAdmTlm .OR. (doAdmTlm.AND.yadprefix.EQ.'ad') )

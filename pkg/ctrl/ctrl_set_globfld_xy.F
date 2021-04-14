@@ -46,6 +46,7 @@ c     == local variables ==
       integer jmin,jmax
       integer imin,imax
       integer irec,nrec_nl
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
 
       _RL globfld2d(1-OLx:sNx+OLx,1-OLy:sNy+OLy,nSx,nSy)
       _RL globfld3d(1-OLx:sNx+OLx,1-OLy:sNy+OLy,nr,nSx,nSy)
@@ -88,12 +89,26 @@ c     Initialise temporary file
 
       nrec_nl = int(ncvarrecs(ivartype)/Nr)
       do irec = 1,  nrec_nl
+
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A)')
+     & 'ctrl_set_globfld_xy: 3D ', iRec, ' ', trim(fName)
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
         CALL WRITE_REC_3D_RL( fname, ctrlprec, Nr,
      &                        globfld3d,
      &                        irec, optimcycle, myThid )
       enddo
 
       do irec = nrec_nl*Nr+1, ncvarrecs(ivartype)
+
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A)')
+     & 'ctrl_set_globfld_xy: 2D ', iRec, ' ', trim(fName)
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
         CALL WRITE_REC_3D_RL( fname, ctrlprec, 1,
      &                        globfld2d,
      &                        irec, optimcycle, myThid )

@@ -74,18 +74,45 @@ C                      variable and write to active file
       LOGICAL lAdInit
       _RL     dummy
 
+C     !FUNCTIONS:
+      INTEGER  ILNBLNK
+      EXTERNAL ILNBLNK
+
 C     !LOCAL VARIABLES:
+      INTEGER il
       INTEGER myNr
       LOGICAL useCurrentDir
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
+      character*(80) fname
+      character*(80) fnames(3)
 CEOP
 
+#if PLEIADES_LUSTRE_OPT
+      il = len_trim(active_var_file)
+      WRITE(fname(1:80),'(A)') ' '
+      WRITE(fname(1:il),'(A)') trim(active_var_file)
+      call ctrl_set_fname( fname, fnames, myThid )
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,6A)')
+     &'active_read_xy: FORWARD ',iRec,' (', trim(active_var_file),')',
+     & ' (', trim(fnames(1)),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
+      myNr = 1
+      useCurrentDir = .FALSE.
+      CALL ACTIVE_READ_3D_RL(
+     &                 trim(fnames(1)), active_var, doglobalread,
+     &                 useCurrentDir, lAdInit, iRec, myNr,
+     &                 FORWARD_SIMULATION, myOptimIter, myThid )
+#else
       myNr = 1
       useCurrentDir = .FALSE.
       CALL ACTIVE_READ_3D_RL(
      &                 active_var_file, active_var, doglobalread,
      &                 useCurrentDir, lAdInit, iRec, myNr,
      &                 FORWARD_SIMULATION, myOptimIter, myThid )
-
+#endif
       RETURN
       END
 
@@ -141,18 +168,45 @@ C                      variable and write to active file
       LOGICAL lAdInit
       _RL     dummy
 
+C     !FUNCTIONS:
+      INTEGER  ILNBLNK
+      EXTERNAL ILNBLNK
+
 C     !LOCAL VARIABLES:
+      INTEGER il
       INTEGER myNr
       LOGICAL useCurrentDir
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
+      character*(80) fname
+      character*(80) fnames(3)
 CEOP
 
+#if PLEIADES_LUSTRE_OPT
+      il = len_trim(active_var_file)
+      WRITE(fname(1:80),'(A)') ' '
+      WRITE(fname(1:il),'(A)') trim(active_var_file)
+      call ctrl_set_fname( fname, fnames, myThid )
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,6A)')
+     &'active_read_xyz: FORWARD ',iRec,' (', trim(active_var_file),')',
+     & ' (', trim(fnames(1)),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
+      myNr = Nr
+      useCurrentDir = .FALSE.
+      CALL ACTIVE_READ_3D_RL(
+     &                 trim(fnames(1)), active_var, doglobalread,
+     &                 useCurrentDir, lAdInit, iRec, myNr,
+     &                 FORWARD_SIMULATION, myOptimIter, myThid )
+#else
       myNr = Nr
       useCurrentDir = .FALSE.
       CALL ACTIVE_READ_3D_RL(
      &                 active_var_file, active_var, doglobalread,
      &                 useCurrentDir, lAdInit, iRec, myNr,
      &                 FORWARD_SIMULATION, myOptimIter, myThid )
-
+#endif
       RETURN
       END
 
@@ -333,12 +387,40 @@ C     myThid:          thread number for this instance
       INTEGER myThid
       _RL     dummy
 
+C     !FUNCTIONS:
+      INTEGER  ILNBLNK
+      EXTERNAL ILNBLNK
+
 C     !LOCAL VARIABLES:
+      INTEGER il
       INTEGER myNr
       LOGICAL globalFile
       LOGICAL useCurrentDir
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
+      character*(80) fname
+      character*(80) fnames(3)
 CEOP
 
+#if PLEIADES_LUSTRE_OPT
+      il = len_trim(active_var_file)
+      WRITE(fname(1:80),'(A)') ' '
+      WRITE(fname(1:il),'(A)') trim(active_var_file)
+      call ctrl_set_fname( fname, fnames, myThid )
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,6A)')
+     &'active_write_xy: FORWARD ',iRec,' (', trim(active_var_file),')',
+     & ' (', trim(fnames(1)),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
+      myNr = 1
+      globalFile = .FALSE.
+      useCurrentDir = .FALSE.
+      CALL ACTIVE_WRITE_3D_RL(
+     &                 trim(fnames(1)), active_var, globalFile,
+     &                 useCurrentDir, iRec, myNr,
+     &                 FORWARD_SIMULATION, myOptimIter, myThid )
+#else
       myNr = 1
       globalFile = .FALSE.
       useCurrentDir = .FALSE.
@@ -346,7 +428,7 @@ CEOP
      &                 active_var_file, active_var, globalFile,
      &                 useCurrentDir, iRec, myNr,
      &                 FORWARD_SIMULATION, myOptimIter, myThid )
-
+#endif
       RETURN
       END
 
@@ -394,12 +476,41 @@ C     myThid:          thread number for this instance
       INTEGER myThid
       _RL     dummy
 
+C     !FUNCTIONS:
+      INTEGER  ILNBLNK
+      EXTERNAL ILNBLNK
+
 C     !LOCAL VARIABLES:
+      INTEGER il
       INTEGER myNr
       LOGICAL globalFile
       LOGICAL useCurrentDir
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
+      character*(80) fname
+      character*(80) fnames(3)
 CEOP
 
+#if PLEIADES_LUSTRE_OPT
+      !il   = ILNBLNK( active_var_file )
+      il = len_trim(active_var_file)
+      WRITE(fname(1:80),'(A)') ' '
+      WRITE(fname(1:il),'(A)') trim(active_var_file)
+      call ctrl_set_fname( fname, fnames, myThid )
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,6A)')
+     &'active_write_xyz: FORWARD ',iRec,' (', trim(active_var_file),')',
+     & ' (', trim(fnames(1)),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
+      myNr = Nr
+      globalFile = .FALSE.
+      useCurrentDir = .FALSE.
+      CALL ACTIVE_WRITE_3D_RL(
+     &                 trim(fnames(1)), active_var, globalFile,
+     &                 useCurrentDir, iRec, myNr,
+     &                 FORWARD_SIMULATION, myOptimIter, myThid )
+#else
       myNr = Nr
       globalFile = .FALSE.
       useCurrentDir = .FALSE.
@@ -407,7 +518,7 @@ CEOP
      &                 active_var_file, active_var, globalFile,
      &                 useCurrentDir, iRec, myNr,
      &                 FORWARD_SIMULATION, myOptimIter, myThid )
-
+#endif
       RETURN
       END
 

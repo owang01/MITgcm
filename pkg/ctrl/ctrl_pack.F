@@ -201,11 +201,18 @@ c     >>> Write gradient vector <<<
 #else
           fcloc     = zeroRL
 #endif
+#ifdef PLEIADES_LUSTRE_OPT
+          write(cfile(1:128),'(4a,i4.4)')
+     &         trim(costname),'_',yctrlid(1:10),
+     &         yctrlpospack, optimcycle
+         write(standardMessageUnit,*) 'ph-pack: packing ',trim(costname)
+#else
           write(cfile(1:128),'(4a,i4.4)')
      &         costname(1:9),'_',yctrlid(1:10),
      &         yctrlpospack, optimcycle
           write(standardMessageUnit,*) 'ph-pack: packing ',costname(1:9)
-       endif
+#endif
+      endif
 
 c--   Only Proc 0 will do I/O.
       IF ( myProcId .eq. 0 ) THEN

@@ -440,6 +440,7 @@ C Local
       LOGICAL useCurrentDir
       _RS dummyRS(1)
       CHARACTER*(2) fType
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
 c     INTEGER IL
 c     CHARACTER*(MAX_LEN_FNAM) fullName
 CEOP
@@ -455,6 +456,12 @@ c     ENDIF
       useCurrentDir = .FALSE.
       fType='RL'
 #ifdef ALLOW_MDSIO
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A)')
+     & ' WRITE_REC_3D_RL: ', iRec, ' ', trim(fName)
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
       CALL MDS_WRITE_FIELD(
      I                      fName, fPrec, globalFile, useCurrentDir,
      I                      fType, nNz, 1, nNz, field, dummyRS,

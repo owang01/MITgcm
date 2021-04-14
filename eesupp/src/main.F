@@ -209,6 +209,7 @@ C--      Each threads sets flag indicating it is done
   999 CONTINUE
 
 !      call fileHash%show()
+      call fileHash%fclose()
 
 C--   Shut down execution environment
       CALL EEDIE

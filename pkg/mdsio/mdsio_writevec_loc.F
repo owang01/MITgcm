@@ -174,14 +174,12 @@ C--   Open the file:
             fileIsOpen=.TRUE.
           ENDIF
 
-          call fileHash%set(trim(dataFName), dUnit, .FALSE., filePrec)
-
-          !IF ( debugLevel.GE.debLevC ) THEN
+          IF ( debugLevel.GE.debLevC ) THEN
             WRITE(msgBuf,'(2A)')
      &      ' MDS_WRITEVEC_LOC: open file: ',dataFname(1:pIL+13)
             CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                          SQUEEZE_RIGHT , 1)
-          !ENDIF
+          ENDIF
 C- End if block: File Unit is already open / Need to open it
         ENDIF
 
@@ -210,13 +208,20 @@ C If we were writing to a tiled MDS file then we close it here
           CLOSE( dUnit )
           fileIsOpen = .FALSE.
         ENDIF
-        IF ( ioUnit.EQ.-1 ) ioUnit = dUnit
+        IF ( ioUnit.EQ.-1 ) then
+           ioUnit = dUnit
+           call fileHash%set(trim(dataFName), dUnit)
+        endif
 
         IF ( irecord.GT.0 ) THEN
 C Create meta-file for each tile IF we are tiling
           IF ( bi.EQ.0 .AND. bj.EQ.0 ) THEN
 C--   we are writing a non-tiled array (bi=bj=0):
+#ifdef PLEIADES_LUSTRE_OPT
+            WRITE(metaFname,'(2A)') trim(fName),'.meta'
+#else
             WRITE(metaFname,'(2A)') fName(1:IL),'.meta'
+#endif
             dimList(1,1)=1
             dimList(2,1)=1
             dimList(3,1)=1

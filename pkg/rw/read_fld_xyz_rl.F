@@ -23,6 +23,7 @@ C Local
       INTEGER iRec
       INTEGER s1Lo,s1Hi,s2Lo,s2Hi
       CHARACTER*(MAX_LEN_FNAM) fullName
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
 C
 C--   Build file name
 C     Name has form 'prefix.suffix'
@@ -42,11 +43,17 @@ C     e.g. U.0000000100
       nNz=Nr
       iRec=1
 #ifdef ALLOW_MDSIO
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A,A)')
+     &  'READ_FLD_XYZ_RL: ',iRec,' (', trim(fullName),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
       CALL MDS_READ_FIELD(
      I                     fullName, readBinaryPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     field, dummyRS,
-     I                     iRec, myThid )
+     I                     iRec, myThid, .FALSE. )
 #endif
       RETURN
       END

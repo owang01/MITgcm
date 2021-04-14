@@ -35,7 +35,11 @@ c     == routine arguments ==
       integer cunit
       integer ivartype
       character*( 80)   fname
+#ifdef PLEIADES_LUSTRE_OPT
+      character(len=*) masktype
+#else
       character*(  9) masktype
+#endif
       character*( 80) weighttype
       _RL     weightfld( nr,nsx,nsy )
       integer nwetglobal(nr)
@@ -342,6 +346,7 @@ c     == local variables ==
       _RL delZnorm
       character*(80) cfile2, cfile3
       _RL dummy
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
 
       LOGICAL doPackOld
 
@@ -358,6 +363,12 @@ c-- part 1: preliminary reads and definitions
 
 #ifdef CTRL_UNPACK_PRECISE
 #ifdef ALLOW_AUTODIFF
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,A)')
+     & 'ctrl_set_unpack_xyz : Weight ', trim(weighttype)
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
       call active_read_xyz(weighttype, wei3d, 1,
      &    .FALSE., .FALSE., 0 , mythid, dummy)
 #else
@@ -366,6 +377,12 @@ c-- part 1: preliminary reads and definitions
 #endif
 
 #ifdef ALLOW_AUTODIFF
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,A)')
+     & 'ctrl_set_unpack_xyz : Mask ', trim(masktype)
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
       call active_read_xyz(masktype, msk3d, 1,
      &    .FALSE., .FALSE., 0 , mythid, dummy)
 #else

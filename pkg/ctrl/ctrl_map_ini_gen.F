@@ -110,7 +110,7 @@ c--   only do interior, and exchange outside
       ENDDO
 
       CALL MDS_READ_FIELD(wFileCur,ctrlprec,.FALSE.,'RL',
-     &                    nR,1,nR,wFld3d,dummyRS,1,mythid)
+     &                    nR,1,nR,wFld3d,dummyRS,1,mythid, .FALSE.)
       _EXCH_XYZ_RL( wFld3d, mythid )
 
       il=ilnblnk( xxFileCur )
@@ -322,7 +322,7 @@ c--   only do interior, and exchange outside
       ENDDO
 
       CALL MDS_READ_FIELD(wFileCur,ctrlprec,.FALSE.,'RL',
-     &                    1,1,1,wFld2d,dummyRS,1,mythid)
+     &                    1,1,1,wFld2d,dummyRS,1,mythid, .FALSE.)
       _EXCH_XY_RL( wFld2d, mythid )
 
       il=ilnblnk( xxFileCur )

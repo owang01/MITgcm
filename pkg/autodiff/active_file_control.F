@@ -87,6 +87,7 @@ C     !FUNCTIONS:
 C     !LOCAL VARIABLES:
       CHARACTER*(2)  adpref
       CHARACTER*(80) adfname
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
       INTEGER bi,bj
       INTEGER i,j,k
       INTEGER prec
@@ -98,7 +99,6 @@ CEOP
 
 C     force 64-bit io
       prec = ctrlprec
-
       adpref = 'ad'
       il = ILNBLNK( activeVar_file )
       WRITE(adfname(1:80),'(80a)') ' '
@@ -107,14 +107,27 @@ C     force 64-bit io
 C     >>>>>>>>>>>>>>>>>>> FORWARD RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. FORWARD_SIMULATION) THEN
 
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A)')
+     & ' ACTIVE_READ_3D_RL: FORWARD ', iRec,
+     & '  ', trim(activeVar_file)
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
 C     Read the active variable from file.
         CALL MDS_READ_FIELD(
      I                activeVar_file, prec, useCurrentDir,
      I                'RL', myNr, 1, myNr,
      O                active_var, dummyRS,
-     I                iRec, myThid )
+     I                iRec, myThid, .FALSE. )
 
         IF ( lAdInit ) THEN
+
+!      WRITE(msgBuf,'(A,I4,A,A)')
+!     & ' ACTIVE_READ_3D_RL: FORWARD_SIMULATION1 ', iRec,
+!     & '  ', trim(adfname)
+!      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+!     &                        SQUEEZE_RIGHT, myThid )
 C     Initialise the corresponding adjoint variable on the
 C     adjoint variable file. These files are tiled.
 
@@ -143,11 +156,18 @@ C     adjoint variable file. These files are tiled.
 C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. REVERSE_SIMULATION) THEN
 
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A)')
+     & ' ACTIVE_READ_3D_RL: REVERSE ', iRec,
+     & '  ', trim(activeVar_file)
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
         CALL MDS_READ_FIELD(
      I                activeVar_file, prec, useCurrentDir,
      I                'RL', Nr, 1, myNr,
      O                active_data_t, dummyRS,
-     I                iRec, myThid )
+     I                iRec, myThid, .FALSE. )
 
 C     Add active_var from appropriate location to data.
         DO bj = myByLo(myThid), myByHi(myThid)
@@ -164,6 +184,11 @@ C     Add active_var from appropriate location to data.
         ENDDO
 
 C     Store the result on disk.
+!      WRITE(msgBuf,'(A,I4,A,A)')
+!     & ' ACTIVE_READ_3D_RL: REVERSE_SIMULATION ', iRec,
+!     & '  ', trim(activeVar_file)
+!      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+!     &                        SQUEEZE_RIGHT, myThid )
         w_globFile = .FALSE.
         CALL MDS_WRITE_FIELD(
      I                activeVar_file, prec, w_globFile, useCurrentDir,
@@ -193,7 +218,7 @@ C     Read the active variable from file.
      I                activeVar_file, prec, useCurrentDir,
      I                'RL', myNr, 1, myNr,
      O                active_var, dummyRS,
-     I                iRec, myThid )
+     I                iRec, myThid, .FALSE. )
       ENDIF
 
       RETURN
@@ -294,7 +319,7 @@ C     Read the active variable from file.
      I                activeVar_file, prec, useCurrentDir,
      I                'RS', myNr, 1, myNr,
      O                dummyRL, active_var,
-     I                iRec, myThid )
+     I                iRec, myThid, .FALSE. )
 
         IF ( lAdInit ) THEN
 C     Initialise the corresponding adjoint variable on the
@@ -329,7 +354,7 @@ C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
      I                activeVar_file, prec, useCurrentDir,
      I                'RS', Nr, 1, myNr,
      O                dummyRL, active_data_t,
-     I                iRec, myThid )
+     I                iRec, myThid, .FALSE. )
 
 C     Add active_var from appropriate location to data.
         DO bj = myByLo(myThid), myByHi(myThid)
@@ -375,7 +400,7 @@ C     Read the active variable from file.
      I                activeVar_file, prec, useCurrentDir,
      I                'RS', myNr, 1, myNr,
      O                dummyRL, active_var,
-     I                iRec, myThid )
+     I                iRec, myThid, .FALSE. )
       ENDIF
 
       RETURN
@@ -441,6 +466,7 @@ C     !LOCAL VARIABLES:
       INTEGER  i,j,k
       INTEGER  bi,bj
       INTEGER  prec
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
       _RS  dummyRS(1)
       _RL  active_data_t(1-OLx:sNx+OLx,1-OLy:sNy+OLy,Nr,nSx,nSy)
 CEOP
@@ -460,11 +486,18 @@ C     >>>>>>>>>>>>>>>>>>> FORWARD RUN <<<<<<<<<<<<<<<<<<<
 C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. REVERSE_SIMULATION) THEN
 
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A)')
+     & ' ACTIVE_WRITE_3D_RL: REVERSE ', iRec,
+     & '  ', trim(activeVar_file)
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
         CALL MDS_READ_FIELD(
      I                activeVar_file, prec, useCurrentDir,
      I                'RL', Nr, 1, myNr,
      O                active_data_t, dummyRS,
-     I                iRec, myThid )
+     I                iRec, myThid, .FALSE. )
 
 C     Add active_var from appropriate location to data.
         DO bj = myByLo(myThid), myByHi(myThid)
@@ -557,6 +590,7 @@ C     myThid         :: thread number for this instance
       INTEGER  myThid
 
 C     !LOCAL VARIABLES:
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
       INTEGER  i,j,k
       INTEGER  bi,bj
       INTEGER  prec
@@ -569,6 +603,14 @@ C     force 64-bit io
 
 C     >>>>>>>>>>>>>>>>>>> FORWARD RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. FORWARD_SIMULATION) THEN
+
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A)')
+     & ' ACTIVE_READ_3D_RS: FORWARD ', iRec,
+     & '  ', trim(activeVar_file)
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
         CALL MDS_WRITE_FIELD(
      I                activeVar_file, prec, globalFile, useCurrentDir,
      I                'RS', myNr, 1, myNr,
@@ -579,11 +621,18 @@ C     >>>>>>>>>>>>>>>>>>> FORWARD RUN <<<<<<<<<<<<<<<<<<<
 C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. REVERSE_SIMULATION) THEN
 
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A)')
+     & ' ACTIVE_READ_3D_RS: REVERSE ', iRec,
+     & '  ', trim(activeVar_file)
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
         CALL MDS_READ_FIELD(
      I                activeVar_file, prec, useCurrentDir,
      I                'RS', Nr, 1, myNr,
      O                dummyRL, active_data_t,
-     I                iRec, myThid )
+     I                iRec, myThid, .FALSE. )
 
 C     Add active_var from appropriate location to data.
         DO bj = myByLo(myThid), myByHi(myThid)

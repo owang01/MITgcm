@@ -479,14 +479,20 @@ cHFLUXM_CONTROL
         yadprefix           = 'g_'
         yadmark             = 'g_'
 #else
+        tmpDir              = '/tmp/'
         yadprefix           = 'ad'
         yadmark             = 'ad'
 #endif
         yctrlid             = 'MIT_CE_000'
         yctrlposunpack      = '.opt'
         yctrlpospack        = '.opt'
+#ifdef PLEIADES_LUSTRE_OPT
+        ctrlname            = '/tmp/ecco_ctrl'
+        costname            = '/tmp/ecco_cost'
+#else
         ctrlname            = 'ecco_ctrl'
         costname            = 'ecco_cost'
+#endif
         scalname            = ' '
         maskname            = ' '
         metaname            = ' '

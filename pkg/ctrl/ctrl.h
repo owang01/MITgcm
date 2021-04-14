@@ -134,8 +134,10 @@ C     ctrlUseGen             ::   use generic control approach rather than old c
       common /controlvars_c/
      &                       ncvargrd
      &                     , yadprefix
+     &                     , tmpDir
       character*(1) ncvargrd(maxcvars)
       character*(2) yadprefix
+      character*(32) tmpDir
 
       common /controlvec_header_i/
      &        filenvartype,
@@ -215,8 +217,13 @@ cph     &                      , tmpfld3d
      &                      yctrlposunpack,
      &                      yctrlpospack
       character*2 yadmark
+#ifdef PLEIADES_LUSTRE_OPT
+      character*13 ctrlname
+      character*13 costname
+#else
       character*9 ctrlname
       character*9 costname
+#endif
       character*9 scalname
       character*9 maskname
       character*9 metaname

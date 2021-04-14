@@ -26,6 +26,12 @@ C Local
       INTEGER iRec
       INTEGER s1Lo,s1Hi,s2Lo,s2Hi
       CHARACTER*(MAX_LEN_FNAM) fullName
+#if PLEIADES_LUSTRE_OPT
+      INTEGER il
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
+      character*(80) fname
+      character*(80) fnames(3)
+#endif
 C
 C--   Build file name
 C     Name has form 'prefix.suffix'
@@ -47,11 +53,30 @@ C     e.g. U.0000000100
       nNz=1
       iRec=1
 #ifdef ALLOW_MDSIO
+#if PLEIADES_LUSTRE_OPT
+      il = len_trim(fullName)
+      WRITE(fname(1:80),'(A)') ' '
+      WRITE(fname(1:il),'(A)') trim(fullName)
+      call ctrl_set_fname( fname, fnames, myThid )
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,6A)')
+     &'WRITE_FLD_XY_RS: ',iRec,' (', trim(fullName),')',
+     & ' (', trim(fnames(1)),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
+      CALL MDS_WRITE_FIELD(
+     I                      trim(fnames(1)), writeBinaryPrec,
+     I                      globalFile, useCurrentDir,
+     I                      fType, nNz, 1, nNz, dummyRL, field,
+     I                      iRec, myIter, myThid )
+#else
       CALL MDS_WRITE_FIELD(
      I                      fullName, writeBinaryPrec,
      I                      globalFile, useCurrentDir,
      I                      fType, nNz, 1, nNz, dummyRL, field,
      I                      iRec, myIter, myThid )
+#endif
 #endif
       RETURN
       END

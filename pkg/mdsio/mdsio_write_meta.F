@@ -22,6 +22,7 @@ C     *==========================================================*
 C     \ev
 
 C     !USES:
+      use dictionary_m
       IMPLICIT NONE
 
 C     == Global variables / common blocks
@@ -87,12 +88,16 @@ C  else can do this.
 C For now, we will assume everything is ok and that the last record
 C  is written to the last consecutive record in the file.
 
+      mUnit = fileHash%get1(trim(mFileName))
+
+      if (mUnit .eq. -999) then
 C-    Assign a free unit number as the I/O channel for this subroutine
-      CALL MDSFINDUNIT( mUnit, myThid )
+        CALL MDSFINDUNIT( mUnit, myThid )
 
 C-    Open meta-file
-      OPEN( mUnit, file=mFileName, status='unknown',
-     &      form='formatted' )
+        OPEN(mUnit, file=mFileName, status='unknown',form='formatted')
+        call fileHash%set(trim(mFileName), mUnit)
+      endif
 
 C-    Write the simulation name
       iL = ILNBLNK(simulName)
@@ -197,7 +202,8 @@ C-    Write title or comments (but ignored by rdmds)
       ENDIF
 
 C-    Close meta-file
-      CLOSE(mUnit)
+      !CLOSE(mUnit)
+      REWIND(mUnit)
 
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 

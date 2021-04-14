@@ -46,7 +46,7 @@ C     e.g. U.0000000100
      I                     fullName, readBinaryPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     dummyRL, field,
-     I                     iRec, myThid )
+     I                     iRec, myThid, .FALSE. )
 #endif
       RETURN
       END

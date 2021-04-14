@@ -61,12 +61,12 @@ C Local variables
         CALL MDS_READ_FIELD(
      I                fName, filePrec, .FALSE., arrType, nNz, 1, nNz,
      O                arr, dummyRS,
-     I                irecord, myThid )
+     I                irecord, myThid, .FALSE. )
       ELSE
         CALL MDS_READ_FIELD(
      I                fName, filePrec, .FALSE., arrType, nNz, 1, nNz,
      O                dummyRL, arr,
-     I                irecord, myThid )
+     I                irecord, myThid, .FALSE. )
       ENDIF
 
 #else /* USE_OBSOLETE_MDS_RW_FIELD */
@@ -127,12 +127,12 @@ C Local variables
         CALL MDS_READ_FIELD(
      I                fName, filePrec, .TRUE., arrType, nNz, 1, nNz,
      O                arr, dummyRS,
-     I                irecord, myThid )
+     I                irecord, myThid, .FALSE. )
       ELSE
         CALL MDS_READ_FIELD(
      I                fName, filePrec, .TRUE., arrType, nNz, 1, nNz,
      O                dummyRL, arr,
-     I                irecord, myThid )
+     I                irecord, myThid, .FALSE. )
       ENDIF
 
 #else /* USE_OBSOLETE_MDS_RW_FIELD */

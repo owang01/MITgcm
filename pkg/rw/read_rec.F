@@ -66,7 +66,7 @@ c     ENDIF
      I                     fName, readBinaryPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     dummyRL, field,
-     I                     iRec, myThid )
+     I                     iRec, myThid, .FALSE. )
 #endif
       RETURN
       END
@@ -106,6 +106,7 @@ C Local
       _RS dummyRS(1)
       CHARACTER*(2) fType
       INTEGER nNz
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
 c     INTEGER IL
 c     CHARACTER*(MAX_LEN_FNAM) fullName
 CEOP
@@ -121,11 +122,17 @@ c     ENDIF
       fType='RL'
       nNz=1
 #ifdef ALLOW_MDSIO
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A,A)')
+     &  'READ_REC_XY_RL: ',iRec,' (', trim(fName),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
       CALL MDS_READ_FIELD(
      I                     fName, readBinaryPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     field, dummyRS,
-     I                     iRec, myThid )
+     I                     iRec, myThid, .TRUE. )
 #endif
       RETURN
       END
@@ -185,7 +192,7 @@ c     ENDIF
      I                     fName, readBinaryPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     dummyRL, field,
-     I                     iRec, myThid )
+     I                     iRec, myThid, .FALSE. )
 #endif
       RETURN
       END
@@ -225,6 +232,7 @@ C Local
       _RS dummyRS(1)
       CHARACTER*(2) fType
       INTEGER nNz
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
 c     INTEGER IL
 c     CHARACTER*(MAX_LEN_FNAM) fullName
 CEOP
@@ -241,11 +249,17 @@ c     ENDIF
       fType='RL'
       nNz=Nr
 #ifdef ALLOW_MDSIO
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A,A)')
+     &  'READ_REC_XYZ_RL: ',iRec,' (', trim(fName),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
       CALL MDS_READ_FIELD(
      I                     fName, readBinaryPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     field, dummyRS,
-     I                     iRec, myThid )
+     I                     iRec, myThid, .FALSE. )
 #endif
       RETURN
       END
@@ -309,7 +323,7 @@ c     ENDIF
      I                     fName, fPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     dummyRL, field,
-     I                     iRec, myThid )
+     I                     iRec, myThid, .FALSE. )
 #endif
       RETURN
       END
@@ -354,6 +368,7 @@ C Local
       LOGICAL useCurrentDir
       _RS dummyRS(1)
       CHARACTER*(2) fType
+      CHARACTER*(MAX_LEN_MBUF) msgBuf
 c     INTEGER IL
 c     CHARACTER*(MAX_LEN_FNAM) fullName
 CEOP
@@ -369,11 +384,17 @@ c     ENDIF
       useCurrentDir = .FALSE.
       fType='RL'
 #ifdef ALLOW_MDSIO
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A,A)')
+     &  'READ_REC_XYZ_RL: ',iRec,' (', trim(fName),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
       CALL MDS_READ_FIELD(
      I                     fName, fPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     field, dummyRS,
-     I                     iRec, myThid )
+     I                     iRec, myThid, .TRUE. )
 #endif
       RETURN
       END
@@ -438,7 +459,7 @@ c     ENDIF
      I                     fName, fPrec, useCurrentDir,
      I                     fType, kSiz, kLo, kHi,
      O                     dummyRL, field,
-     I                     iRec, myThid )
+     I                     iRec, myThid, .FALSE. )
 #endif
       RETURN
       END
@@ -503,7 +524,7 @@ c     ENDIF
      I                     fName, fPrec, useCurrentDir,
      I                     fType, kSiz, kLo, kHi,
      O                     field, dummyRS,
-     I                     iRec, myThid )
+     I                     iRec, myThid, .FALSE. )
 #endif
       RETURN
       END

@@ -345,12 +345,17 @@ C--   read in array "field"
         useCurrentDir = .FALSE.
         fType = 'RL'
 #ifdef ALLOW_MDSIO
-        !write(*,*) 'READ_MFLDS_3D_RL: ', trim(fName)
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A,A)')
+     &  'READ_MFLDS_3D_RL: ',nj,' (', trim(fName),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
         CALL MDS_READ_FIELD(
      I                       fName, fPrec, useCurrentDir,
      I                       fType, nNz, 1, nNz,
      O                       field, dummyRS,
-     I                       nj, myThid )
+     I                       nj, myThid, .TRUE. )
 
 #endif
       ENDIF
@@ -475,11 +480,17 @@ C--   read in array "field"
         useCurrentDir = .FALSE.
         fType = 'RL'
 #ifdef ALLOW_MDSIO
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A,A)')
+     &  'READ_MFLDS_LEV_RL: ',nj,' (', trim(fName),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
         CALL MDS_READ_FIELD(
      I                       fName, fPrec, useCurrentDir,
      I                       fType, kSiz, kLo, kHi,
      O                       field, dummyRS,
-     I                       nj, myThid )
+     I                       nj, myThid, .FALSE. )
 
 #endif
       ENDIF
@@ -608,7 +619,7 @@ C--   read in array "field"
      I                       fName, fPrec, useCurrentDir,
      I                       fType, kSiz, kLo, kHi,
      O                       dummyRL, field,
-     I                       nj, myThid )
+     I                       nj, myThid, .FALSE. )
 
 #endif
       ENDIF

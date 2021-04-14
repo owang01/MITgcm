@@ -11,7 +11,8 @@ C !INTERFACE:
      I   kSize,kLo,kHi,
      O   fldRL, fldRS,
      I   irecord,
-     I   myThid )
+     I   myThid,
+     I   EnableFastPath )
 
 C !DESCRIPTION:
 C Arguments:
@@ -83,6 +84,7 @@ C !INPUT PARAMETERS:
       INTEGER kSize, kLo, kHi
       INTEGER irecord
       INTEGER myThid
+      LOGICAL, intent(in) :: EnableFastPath
 C !OUTPUT PARAMETERS:
       _RL  fldRL(*)
       _RS  fldRS(*)
@@ -112,6 +114,8 @@ C     bBij  :: base shift in Buffer index for tile bi,bj
       INTEGER tNx, tNy, global_nTx
       INTEGER tBx, tBy, iGjLoc, jGjLoc
       INTEGER fUnit, fUnit2
+      LOGICAL EFP
+      DOUBLE PRECISION e
 !      INTEGER iUnit,iNumber,iRecl
 !      LOGICAL lOpened
 #ifdef ALLOW_EXCH2
@@ -132,6 +136,11 @@ C Set dimensions:
 #endif /* ALLOW_EXCH2 */
 
 C Assume nothing
+      EFP = .false.
+      !if (present(EnableFastPath)) then
+        if(EnableFastPath) EFP = .true.
+      !endif
+
       globalFile = .FALSE.
       fileIsOpen = .FALSE.
       IL  = ILNBLNK( fName )
@@ -150,7 +159,7 @@ C Only do I/O if I am the master thread (and mpi process 0 IF useSingleCpuIO):
 !      if ((fUnit .ne. -999) .and. (fUnit2 .ne. -999))
 !     &  write(*,*) 'MDS_READ_FIELD: Both files!'
 
-      if ((fUnit .ne. -999) .or. (fUnit2 .ne. -999)) then
+      if (EFP .and. ((fUnit .ne. -999) .or. (fUnit2 .ne. -999))) then
         if (fUnit2 .ne. -999) then
 !          WRITE(msgBuf,'(A,A,A,3I4)')
 !     &      ' MDS_READ_FIELD: Fast path ',trim(dataFName), ' ', fUnit,
@@ -187,11 +196,13 @@ C master thread of process 0, only, read from file
         IF ( iAmDoingIO ) THEN
           irec = 1 + k-kLo + (irecord-1)*nNz
 
-!        WRITE(msgBuf,'(A,2I4,3A,4I6,I8)')
-!     &   ' MDS_READ_FIELD: Fast path reading ', k,irec,' ',trim(fName),
-!     &  ' ',fUnit, fileHash%get3(trim(fName)), filePrec,xSize*ySize
-!        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
-!     &                      SQUEEZE_RIGHT, myThid)
+#ifdef DSK_DEBUG
+        WRITE(msgBuf,'(A,2I4,3A,2I6,I8)')
+     &   ' MDS_READ_FIELD: Fast path reading ', k,irec,' ',trim(fName),
+     &  ' ', fUnit, filePrec, xSize*ySize
+        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                      SQUEEZE_RIGHT, myThid)
+#endif
 
           IF (filePrec .EQ. precFloat32) THEN
            READ(fUnit,rec=irec) ( xy_buffer_r4(i),i=1,xSize*ySize )
@@ -393,7 +404,7 @@ C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 C     if useSingleCpuIO / else / end
       ENDIF
 
-      else ! File not opened yet.  Go through full processing
+      else ! File not opened yet or EFP=.false..  Go through full processing
 
 C File name should not be too long:
 C    IL(+pIL if not useCurrentDir)(+5: '.data')(+8: bi,bj) =< MAX_LEN_FNAM
@@ -434,15 +445,17 @@ C check for valid sub-set of levels:
       IF ( kLo.LT.1 .OR. kHi.GT.kSize ) THEN
         WRITE(msgBuf,'(3A,I10)')
      &    ' MDS_READ_FIELD: file="', fName(1:IL), '"'
-        CALL PRINT_MESSAGE( msgBuf, errorMessageUnit,
+        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                      SQUEEZE_RIGHT, myThid )
-        WRITE(msgBuf,'(3(A,I6))')
+        WRITE(msgBuf,'(3(A,I14))')
      &    ' MDS_READ_FIELD: arguments kSize=', kSize,
      &    ' , kLo=', kLo, ' , kHi=', kHi
-        CALL PRINT_MESSAGE( msgBuf, errorMessageUnit,
+        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                      SQUEEZE_RIGHT, myThid )
-        WRITE(msgBuf,'(A)')
-     &    ' MDS_READ_FIELD: invalid sub-set of levels'
+        e = sqrt(-dble(kHi))
+        e = e + sqrt(dble(kLo))
+        WRITE(msgBuf,'(A,E25.17)')
+     &    ' MDS_READ_FIELD: invalid sub-set of levels',e
         CALL PRINT_ERROR( msgBuf, myThid )
         CALL ALL_PROC_DIE( myThid )
         STOP 'ABNORMAL END: S/R MDS_READ_FIELD'
@@ -518,7 +531,7 @@ C- endif iAmDoingIO
 
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 ! All ranks need to know the file name in order to make the right choice above
-      call fileHash%set(trim(dataFName), -99, globalFile, filePrec)
+      if(EFP) call fileHash%set(trim(dataFName), -99)
 
       IF ( useSingleCPUIO ) THEN
 
@@ -537,14 +550,14 @@ C Otherwise stop program.
      &         access='direct', recl=length_of_rec )
 
 
-!            WRITE(msgBuf,'(3A,I4,I8)')
-!     &      ' MDS_READ_FIELD: Opened global file: ',
-!     &       trim(dataFName), ' ', dUnit, length_of_rec
-!            CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
-!     &                          SQUEEZE_RIGHT, myThid)
-
-
-          call fileHash%set(trim(dataFName), dUnit, globalFile,filePrec)
+#ifdef DSK_DEBUG
+            WRITE(msgBuf,'(3A,I4,I8)')
+     &      ' MDS_READ_FIELD: Opened global file: ',
+     &       trim(dataFName), ' ', dUnit, length_of_rec
+            CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                          SQUEEZE_RIGHT, myThid)
+#endif
+           if(EFP) call fileHash%set(trim(dataFName), dUnit)
          ELSE
           WRITE(msgBuf,'(2A)')
      &      ' MDS_READ_FIELD: filename: ', dataFName(1:IL+5)
@@ -658,7 +671,16 @@ c      ENDDO k=kLo,kHi
 !     &                      SQUEEZE_RIGHT, myThid)
 
 !         !deallocate(buffer)
-!         CLOSE( dUnit )
+         if (.not. EFP) then
+           CLOSE( dUnit )
+#ifdef DSK_DEBUG
+            WRITE(msgBuf,'(3A,I4)')
+     &      ' MDS_READ_FIELD: Closed global file: ',
+     &       trim(dataFName), ' ', dUnit
+            CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                          SQUEEZE_RIGHT, myThid)
+#endif
+         endif
          !REWIND( dUnit )
        ENDIF
 
@@ -691,7 +713,7 @@ C If we are reading from a global file then we open it here
 !     &                          SQUEEZE_RIGHT, myThid)
 
 
-         call fileHash%set(trim(dataFName), dUnit, globalFile, filePrec)
+         if (EFP) call fileHash%set(trim(dataFName), dUnit)
         ENDIF
 
 C Loop over all tiles
@@ -779,7 +801,7 @@ C (This is a place-holder for the active/passive mechanism
 #endif
      &            access='direct', recl=length_of_rec )
             fileIsOpen=.TRUE.
-            !call fileHash%set(trim(dataFName), dUnit, globalFile,.true.)
+            if(EFP) call fileHash%set(trim(dataFName), dUnit)
            ELSE
             fileIsOpen=.FALSE.
             WRITE(msgBuf,'(4A)') ' MDS_READ_FIELD: filename: ',
@@ -806,8 +828,10 @@ C (This is a place-holder for the active/passive mechanism
 
 C here We close the tiled MDS file
            IF ( fileIsOpen ) THEN
-!             CLOSE( dUnit )
-!             fileIsOpen = .FALSE.
+             if (.not. EFP) then
+               CLOSE( dUnit )
+               fileIsOpen = .FALSE.
+             endif
              !REWIND( dUnit )
            ENDIF
 
@@ -820,8 +844,10 @@ C End of bi,bj loops
 
 C If global file was opened then close it
         IF (fileIsOpen .AND. globalFile) THEN
-!          CLOSE( dUnit )
-!          fileIsOpen = .FALSE.
+          if (.not. EFP) then
+            CLOSE( dUnit )
+            fileIsOpen = .FALSE.
+          endif
           !REWIND( dUnit )
         ENDIF
 
