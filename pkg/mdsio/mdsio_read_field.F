@@ -58,7 +58,9 @@ C   any access by other than master thread is put between BARRIER (protected).
 C
 C Created: 03/16/99 adcroft@mit.edu
 CEOP
+#ifdef PLEIADES_LUSTRE_OPT2
       use dictionary_m
+#endif
 C !USES:
       IMPLICIT NONE
 C Global variables / common blocks
@@ -137,9 +139,7 @@ C Set dimensions:
 
 C Assume nothing
       EFP = .false.
-      !if (present(EnableFastPath)) then
-        if(EnableFastPath) EFP = .true.
-      !endif
+      if(EnableFastPath) EFP = .true.
 
       globalFile = .FALSE.
       fileIsOpen = .FALSE.
@@ -150,6 +150,7 @@ C Assume nothing
 C Only do I/O if I am the master thread (and mpi process 0 IF useSingleCpuIO):
       iAmDoingIO = MASTER_CPU_IO(myThid)
 
+#ifdef PLEIADES_LUSTRE_OPT2
 ! Abreviated path for GLOBAL files that are already open.
 ! -------------------------------------------------------
       fUnit = fileHash%get1(trim(fName))
@@ -405,7 +406,7 @@ C     if useSingleCpuIO / else / end
       ENDIF
 
       else ! File not opened yet or EFP=.false..  Go through full processing
-
+#else
 C File name should not be too long:
 C    IL(+pIL if not useCurrentDir)(+5: '.data')(+8: bi,bj) =< MAX_LEN_FNAM
 C    and shorter enough to be written to msgBuf with other informations
@@ -530,9 +531,10 @@ C- endif iAmDoingIO
 !      ENDIF
 
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
+#ifdef PLEIADES_LUSTRE_OPT2
 ! All ranks need to know the file name in order to make the right choice above
       if(EFP) call fileHash%set(trim(dataFName), -99)
-
+#endif
       IF ( useSingleCPUIO ) THEN
 
 C master thread of process 0, only, opens a global file
@@ -557,7 +559,9 @@ C Otherwise stop program.
             CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                          SQUEEZE_RIGHT, myThid)
 #endif
+#ifdef PLEIADES_LUSTRE_OPT2
            if(EFP) call fileHash%set(trim(dataFName), dUnit)
+#endif
          ELSE
           WRITE(msgBuf,'(2A)')
      &      ' MDS_READ_FIELD: filename: ', dataFName(1:IL+5)
@@ -711,9 +715,9 @@ C If we are reading from a global file then we open it here
 !     &       trim(dataFName), ' ', dUnit, length_of_rec
 !            CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
 !     &                          SQUEEZE_RIGHT, myThid)
-
-
+#ifdef PLEIADES_LUSTRE_OPT2
          if (EFP) call fileHash%set(trim(dataFName), dUnit)
+#endif
         ENDIF
 
 C Loop over all tiles
@@ -801,7 +805,9 @@ C (This is a place-holder for the active/passive mechanism
 #endif
      &            access='direct', recl=length_of_rec )
             fileIsOpen=.TRUE.
+#ifdef PLEIADES_LUSTRE_OPT2
             if(EFP) call fileHash%set(trim(dataFName), dUnit)
+#endif
            ELSE
             fileIsOpen=.FALSE.
             WRITE(msgBuf,'(4A)') ' MDS_READ_FIELD: filename: ',
@@ -910,7 +916,9 @@ C  every one got his data.
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 C     if useSingleCpuIO / else / end
       ENDIF
+#ifdef PLEIADES_LUSTRE_OPT2
       endif
+#endif
 
       RETURN
       END

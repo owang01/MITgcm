@@ -201,7 +201,7 @@ c     >>> Write gradient vector <<<
 #else
           fcloc     = zeroRL
 #endif
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT4
           write(cfile(1:128),'(4a,i4.4)')
      &         trim(costname),'_',yctrlid(1:10),
      &         yctrlpospack, optimcycle

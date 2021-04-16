@@ -61,7 +61,9 @@ C     ========= Local variables =======================
       integer k2, ix9, iy9, ktmp
       integer cunit
       character*(MAX_LEN_FNAM) cfile
+#ifdef PLEIADES_LUSTRE_OPT3
       character*(32) tmpDir
+#endif
 
       _RL prof_data1D_mean(NLEVELMAX)
       _RL prof_count1D(NLEVELMAX)
@@ -84,8 +86,9 @@ C     !FUNCTIONS
       EXTERNAL ILNBLNK
 
 c     == end of interface ==
-
+#ifdef PLEIADES_LUSTRE_OPT3
       tmpDir = '/tmp/'
+#endif
 
 #ifndef ALLOW_CTRL
       optimcycle = 0
@@ -338,7 +341,7 @@ C     _BEGIN_MASTER( mythid )
 
         DO num_var=1,NVARMAX
          iL = ILNBLNK( prof_names(1,num_var) )
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT3
          write(cfile,'(3a)') trim(tmpDir), prof_names(1,num_var)(1:iL),
      &   '_data_mean.data'
 #else
@@ -358,7 +361,7 @@ C     _BEGIN_MASTER( mythid )
          ENDDO
          close ( cunit )
 
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT3
          write(cfile,'(3a)') trim(tmpDir), prof_names(1,num_var)(1:iL),
      &    '_model_mean.data'
 #else
@@ -380,7 +383,7 @@ C    &         access  = 'sequential'   )
          ENDDO
          close ( cunit )
 
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT3
          write(cfile,'(3a)')
      &     trim(tmpDir), prof_names(1,num_var)(1:iL),'_weight_mean.data'
 #else
@@ -399,7 +402,7 @@ C    &         access  = 'sequential'   )
           write(cunit,rec=ikzz) tmp99
          ENDDO
          close ( cunit )
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT3
          write(cfile,'(3a)') trim(tmpDir), prof_names(1,num_var)(1:iL),
      &    '_count_mean.data'
 #else

@@ -89,7 +89,9 @@ C      |
 C      |--eedie()          :: WRAPPER termination
 
 C     !USES:
+#ifdef PLEIADES_LUSTRE_OPT2
       use dictionary_m
+#endif
       IMPLICIT NONE
 
 C     == Global variables ==
@@ -140,7 +142,9 @@ C--   Trap errors
        GOTO 999
       ENDIF
 
+#ifdef PLEIADES_LUSTRE_OPT2
       call fileHash%init(1024)
+#endif
 
 #ifdef HAVE_SETRLSTK
       IF (useSETRLSTK) THEN
@@ -208,8 +212,10 @@ C--      Each threads sets flag indicating it is done
 
   999 CONTINUE
 
+#ifdef PLEIADES_LUSTRE_OPT2
 !      call fileHash%show()
       call fileHash%fclose()
+#endif
 
 C--   Shut down execution environment
       CALL EEDIE

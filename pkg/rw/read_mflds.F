@@ -355,7 +355,7 @@ C--   read in array "field"
      I                       fName, fPrec, useCurrentDir,
      I                       fType, nNz, 1, nNz,
      O                       field, dummyRS,
-     I                       nj, myThid, .TRUE. )
+     I                       nj, myThid, .FALSE. )
 
 #endif
       ENDIF

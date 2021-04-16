@@ -203,7 +203,7 @@ c     >>> Initialise control vector for optimcycle=0 <<<
 c     >>> Write gradient vector <<<
           lxxadxx   = .FALSE.
           ictrlgrad = 2
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT4
           write(cfile(1:128),'(4a,i4.4)')
      &         trim(costname),'_',yctrlid(1:10),
      &         yctrlposunpack(1:4), optimcycle

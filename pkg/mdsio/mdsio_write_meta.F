@@ -22,7 +22,9 @@ C     *==========================================================*
 C     \ev
 
 C     !USES:
+#ifdef PLEIADES_LUSTRE_OPT2
       use dictionary_m
+#endif
       IMPLICIT NONE
 
 C     == Global variables / common blocks
@@ -88,6 +90,7 @@ C  else can do this.
 C For now, we will assume everything is ok and that the last record
 C  is written to the last consecutive record in the file.
 
+#ifdef PLEIADES_LUSTRE_OPT2
       mUnit = fileHash%get1(trim(mFileName))
 
       if (mUnit .eq. -999) then
@@ -98,6 +101,13 @@ C-    Open meta-file
         OPEN(mUnit, file=mFileName, status='unknown',form='formatted')
         call fileHash%set(trim(mFileName), mUnit)
       endif
+#else
+C-    Assign a free unit number as the I/O channel for this subroutine
+      CALL MDSFINDUNIT( mUnit, myThid )
+
+C-    Open meta-file
+      OPEN(mUnit, file=mFileName, status='unknown',form='formatted')
+#endif
 
 C-    Write the simulation name
       iL = ILNBLNK(simulName)
@@ -202,8 +212,11 @@ C-    Write title or comments (but ignored by rdmds)
       ENDIF
 
 C-    Close meta-file
-      !CLOSE(mUnit)
+#ifdef PLEIADES_LUSTRE_OPT2
       REWIND(mUnit)
+#else
+      CLOSE(mUnit)
+#endif
 
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 

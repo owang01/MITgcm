@@ -43,7 +43,9 @@ C to floatPrec32 or floatPrec64.
 C |irecord|=iRec is the record number to be written and must be >=1.
 
 C !USES:
+#ifdef PLEIADES_LUSTRE_OPT2
       use dictionary_m
+#endif
       IMPLICIT NONE
 
 C Global variables / common blocks
@@ -210,7 +212,9 @@ C If we were writing to a tiled MDS file then we close it here
         ENDIF
         IF ( ioUnit.EQ.-1 ) then
            ioUnit = dUnit
+#ifdef PLEIADES_LUSTRE_OPT2
            call fileHash%set(trim(dataFName), dUnit)
+#endif
         endif
 
         IF ( irecord.GT.0 ) THEN

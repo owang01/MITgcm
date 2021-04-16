@@ -82,8 +82,13 @@ C Only do I/O if I am the master thread (and mpi process 0 IF tapeSingleCpuIO):
       IF ( iAmDoingIO ) THEN
         IL = ilnblnk( adTapeDir )
         IF ( .NOT.tapeSingleCpuIO ) THEN
+#ifdef PLEIADES_LUSTRE_OPT
           WRITE(fName,'(A,I1.1,A,I3.3,A)')
      &         '/tmp/tapes',myLev,'.',myProcId,'.data'
+#else
+          WRITE(fName,'(A,I1.1,A,I3.3,A)')
+     &         'tapes',myLev,'.',myProcId,'.data'
+#endif
           length_of_rec = MDS_RECLEN( filePrec,sNxWh*procNyWh,myThid )
         ELSE
           WRITE(fName,'(2A,I1.1,A)')

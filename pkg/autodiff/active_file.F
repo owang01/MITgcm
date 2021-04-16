@@ -87,7 +87,7 @@ C     !LOCAL VARIABLES:
       character*(80) fnames(3)
 CEOP
 
-#if PLEIADES_LUSTRE_OPT
+#if PLEIADES_LUSTRE_OPT3
       il = len_trim(active_var_file)
       WRITE(fname(1:80),'(A)') ' '
       WRITE(fname(1:il),'(A)') trim(active_var_file)
@@ -181,7 +181,7 @@ C     !LOCAL VARIABLES:
       character*(80) fnames(3)
 CEOP
 
-#if PLEIADES_LUSTRE_OPT
+#if PLEIADES_LUSTRE_OPT3
       il = len_trim(active_var_file)
       WRITE(fname(1:80),'(A)') ' '
       WRITE(fname(1:il),'(A)') trim(active_var_file)
@@ -401,7 +401,7 @@ C     !LOCAL VARIABLES:
       character*(80) fnames(3)
 CEOP
 
-#if PLEIADES_LUSTRE_OPT
+#if PLEIADES_LUSTRE_OPT3
       il = len_trim(active_var_file)
       WRITE(fname(1:80),'(A)') ' '
       WRITE(fname(1:il),'(A)') trim(active_var_file)
@@ -490,7 +490,7 @@ C     !LOCAL VARIABLES:
       character*(80) fnames(3)
 CEOP
 
-#if PLEIADES_LUSTRE_OPT
+#if PLEIADES_LUSTRE_OPT3
       !il   = ILNBLNK( active_var_file )
       il = len_trim(active_var_file)
       WRITE(fname(1:80),'(A)') ' '

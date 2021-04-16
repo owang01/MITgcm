@@ -72,8 +72,15 @@ cgf the choices of smooth2Dtype and smooth2Dsize need comments...
       CALL EXCH_XY_RL ( smooth2D_Kvy , myThid )
 
 c write diffusion operator to file
+#ifdef PLEIADES_LUSTRE_OPT
+!         write(cfile,'(3a)') trim(tmpDir), prof_names(1,num_var)(1:iL),
+!     &   '_data_mean.data'
+      write(fnamegeneric(1:80),'(1a,i3.3)')
+     &    '/tmp/smooth2Doperator',smoothOpNb
+#else
       write(fnamegeneric(1:80),'(1a,i3.3)')
      &    'smooth2Doperator',smoothOpNb
+#endif
       CALL WRITE_REC_3D_RL(fnamegeneric,smoothprec,
      &            1,smooth2D_Kux,1,1,mythid)
       CALL WRITE_REC_3D_RL(fnamegeneric,smoothprec,

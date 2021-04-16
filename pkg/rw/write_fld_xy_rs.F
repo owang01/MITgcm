@@ -26,7 +26,7 @@ C Local
       INTEGER iRec
       INTEGER s1Lo,s1Hi,s2Lo,s2Hi
       CHARACTER*(MAX_LEN_FNAM) fullName
-#if PLEIADES_LUSTRE_OPT
+#if PLEIADES_LUSTRE_OPT2
       INTEGER il
       CHARACTER*(MAX_LEN_MBUF) msgBuf
       character*(80) fname
@@ -53,7 +53,7 @@ C     e.g. U.0000000100
       nNz=1
       iRec=1
 #ifdef ALLOW_MDSIO
-#if PLEIADES_LUSTRE_OPT
+#if PLEIADES_LUSTRE_OPT2
       il = len_trim(fullName)
       WRITE(fname(1:80),'(A)') ' '
       WRITE(fname(1:il),'(A)') trim(fullName)

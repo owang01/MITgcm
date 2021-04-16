@@ -100,7 +100,7 @@ C     !LOCAL VARIABLES:
       LOGICAL useCurrentDir
       CHARACTER*(MAX_LEN_MBUF) msgBuf
 CEOP
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT3
 #ifdef DSK_DEBUG
       WRITE(msgBuf,'(A,I4,A,A,A)')
      &'adactive_read_xy: REVERSE ',iRec,' (', trim(active_var_file),')'
@@ -111,12 +111,6 @@ CEOP
       WRITE(fname(1:80),'(A)') ' '
       WRITE(fname(1:il),'(A)') trim(active_var_file)
       call ctrl_set_fname( fname, fnames, myThid )
-#else
-      adpref = 'ad'
-      il   = ILNBLNK( active_var_file )
-      WRITE(fname(1:80),'(A)') ' '
-      WRITE(fname(1:2+il),'(2A)') adpref, active_var_file(1:il)
-#endif
 
       myNr = 1
       useCurrentDir = .FALSE.
@@ -130,7 +124,25 @@ CEOP
      &                 fnames(2), adactive_var, doglobalread,
      &                 useCurrentDir, lAdInit, iRec, myNr,
      &                 REVERSE_SIMULATION, myIter, myThid )
+#else
+      adpref = 'ad'
+      il   = ILNBLNK( active_var_file )
+      WRITE(fname(1:80),'(A)') ' '
+      WRITE(fname(1:2+il),'(2A)') adpref, active_var_file(1:il)
 
+      myNr = 1
+      useCurrentDir = .FALSE.
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A)')
+     & 'adactive_read_xy: REVERSE ', iRec, '  ', trim(fnames(2))
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
+      CALL ACTIVE_READ_3D_RL(
+     &                 fname, adactive_var, doglobalread,
+     &                 useCurrentDir, lAdInit, iRec, myNr,
+     &                 REVERSE_SIMULATION, myIter, myThid )
+#endif
       RETURN
       END
 
@@ -210,7 +222,7 @@ C     !LOCAL VARIABLES:
       CHARACTER*(MAX_LEN_MBUF) msgBuf
 CEOP
 
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT3
 #ifdef DSK_DEBUG
       WRITE(msgBuf,'(A,I4,A,A,A)')
      &'adactive_read_xyz: REVERSE ',iRec,' (', trim(active_var_file),')'
@@ -221,12 +233,7 @@ CEOP
       WRITE(fname(1:80),'(A)') ' '
       WRITE(fname(1:il),'(A)') trim(active_var_file)
       call ctrl_set_fname( fname, fnames, myThid )
-#else
-      adpref = 'ad'
-      il   = ILNBLNK( active_var_file )
-      WRITE(fname(1:80),'(A)') ' '
-      WRITE(fname(1:2+il),'(2A)') adpref, active_var_file(1:il)
-#endif
+
       myNr = Nr
       useCurrentDir = .FALSE.
 
@@ -240,7 +247,25 @@ CEOP
      &                 fnames(2), adactive_var, doglobalread,
      &                 useCurrentDir, lAdInit, iRec, myNr,
      &                 REVERSE_SIMULATION, myIter, myThid )
+#else
+      adpref = 'ad'
+      il   = ILNBLNK( active_var_file )
+      WRITE(fname(1:80),'(A)') ' '
+      WRITE(fname(1:2+il),'(2A)') adpref, active_var_file(1:il)
+      myNr = Nr
+      useCurrentDir = .FALSE.
 
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A,A)')
+     & 'adactive_read_xyz: REVERSE ', iRec, ' (', trim(fnames(2)),')'
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
+      CALL ACTIVE_READ_3D_RL(
+     &                 fname, adactive_var, doglobalread,
+     &                 useCurrentDir, lAdInit, iRec, myNr,
+     &                 REVERSE_SIMULATION, myIter, myThid )
+#endif
       RETURN
       END
 
@@ -490,7 +515,7 @@ C     !LOCAL VARIABLES:
       CHARACTER*(MAX_LEN_MBUF) msgBuf
 CEOP
 
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT3
 #ifdef DSK_DEBUG
       WRITE(msgBuf,'(A,I4,A,A,A)')
      &'adactive_write_xy: REVERSE ',iRec,' (', trim(active_var_file),')'
@@ -595,7 +620,7 @@ C     !LOCAL VARIABLES:
       CHARACTER*(MAX_LEN_MBUF) msgBuf
 CEOP
 
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT3
 #ifdef DSK_DEBUG
       WRITE(msgBuf,'(A,I4,A,A,A)')
      &'adactive_write_xyz: REVERSE ',iRec,' (',trim(active_var_file),')'
@@ -606,6 +631,7 @@ CEOP
       WRITE(fname(1:80),'(A)') ' '
       WRITE(fname(1:il),'(A)') trim(active_var_file)
       call ctrl_set_fname( fname, fnames, myThid )
+
       myNr = Nr
       globalFile = .FALSE.
       useCurrentDir = .FALSE.

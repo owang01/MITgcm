@@ -132,7 +132,7 @@ c     ENDIF
      I                     fName, readBinaryPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     field, dummyRS,
-     I                     iRec, myThid, .TRUE. )
+     I                     iRec, myThid, .FALSE. )
 #endif
       RETURN
       END
@@ -394,7 +394,7 @@ c     ENDIF
      I                     fName, fPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     field, dummyRS,
-     I                     iRec, myThid, .TRUE. )
+     I                     iRec, myThid, .FALSE. )
 #endif
       RETURN
       END

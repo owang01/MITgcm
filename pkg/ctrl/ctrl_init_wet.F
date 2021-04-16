@@ -597,7 +597,7 @@ c     call active_write_xyz( 'maskCtrlC', maskC, 1, 0, mythid, dummy)
 c     call active_write_xyz( 'maskCtrlW', maskW, 1, 0, mythid, dummy)
 c     call active_write_xyz( 'maskCtrlS', maskS, 1, 0, mythid, dummy)
 c#else
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT4
       CALL ACTIVE_WRITE_GEN_RS( '/tmp/maskCtrlC', maskC, 'XY', Nr,
      I                          1, .FALSE., 0, mythid, dummyRS )
       CALL ACTIVE_WRITE_GEN_RS( '/tmp/maskCtrlW', maskW, 'XY', Nr,
@@ -614,7 +614,7 @@ c#else
 #endif
 c#endif
 #if (defined (ALLOW_EFLUXP0_CONTROL))
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT4
       call active_write_xyz('/tmp/maskhFacV',hFacV,1,0,mythid,dummy)
 #else
       call active_write_xyz( 'maskhFacV', hFacV, 1, 0, mythid, dummy)
@@ -624,7 +624,7 @@ c#endif
 c#ifdef REAL4_IS_SLOW
 c     call active_write_xyz( 'maskCtrlI', maskSHI, 1, 0, mythid, dummy)
 c#else
-#ifdef PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT4
       CALL ACTIVE_WRITE_GEN_RS( '/tmp/maskCtrlI', maskSHI, 'XY', Nr,
      I                          1, .FALSE., 0, mythid, dummyRS )
 #else

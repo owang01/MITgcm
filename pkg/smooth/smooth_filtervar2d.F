@@ -45,8 +45,15 @@ c so this routine does not do anything
       nbt_in=smooth2Dnbt(smoothOpNb)/2
 
 c read smoothing [i.e diffusion] operator:
+#ifdef PLEIADES_LUSTRE_OPT
+!         write(cfile,'(3a)') trim(tmpDir), prof_names(1,num_var)(1:iL),
+!     &   '_data_mean.data'
+      write(fnamegeneric(1:80),'(1a,i3.3)')
+     &    '/tmp/smooth2Doperator',smoothOpNb
+#else
       write(fnamegeneric(1:80),'(1a,i3.3)')
      &    'smooth2Doperator',smoothOpNb
+#endif
       CALL READ_REC_3D_RL(fnamegeneric,smoothprec,
      &           1,smooth2D_Kux,1,1,mythid)
       CALL READ_REC_3D_RL(fnamegeneric,smoothprec,

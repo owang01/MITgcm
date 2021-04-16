@@ -315,11 +315,7 @@ CADJ STORE xx_gentim2d_dummy = ctrltape, key = 1 , kind = isbyte
          do k2 = 1, maxCtrlProc
           if (xx_gentim2d_preproc(k2,iarr).EQ.'variaweight') jrec=irec
          enddo
-#ifdef PLEIADES_LUSTRE_OPT
-         !il = len_trim(xx_gentim2d_weight(iarr))
-         !WRITE(fname(1:80),'(A)') ' '
-         !WRITE(fname(1:il),'(A)') trim(xx_gentim2d_weight(iarr))
-         !call ctrl_set_fname( fname, fnames, myThid )
+#ifdef PLEIADES_LUSTRE_OPT4
          write(fname(1:80),'(2a)')
      &   trim(tmpDir), trim(xx_gentim2d_weight(iarr))
 #ifdef DSK_DEBUG
