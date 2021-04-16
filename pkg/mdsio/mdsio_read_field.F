@@ -406,7 +406,7 @@ C     if useSingleCpuIO / else / end
       ENDIF
 
       else ! File not opened yet or EFP=.false..  Go through full processing
-#else
+#endif
 C File name should not be too long:
 C    IL(+pIL if not useCurrentDir)(+5: '.data')(+8: bi,bj) =< MAX_LEN_FNAM
 C    and shorter enough to be written to msgBuf with other informations
@@ -917,7 +917,7 @@ C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 C     if useSingleCpuIO / else / end
       ENDIF
 #ifdef PLEIADES_LUSTRE_OPT2
-      endif
+      endif ! EFP
 #endif
 
       RETURN
