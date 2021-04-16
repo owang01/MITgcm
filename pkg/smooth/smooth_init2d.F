@@ -73,8 +73,6 @@ cgf the choices of smooth2Dtype and smooth2Dsize need comments...
 
 c write diffusion operator to file
 #ifdef PLEIADES_LUSTRE_OPT
-!         write(cfile,'(3a)') trim(tmpDir), prof_names(1,num_var)(1:iL),
-!     &   '_data_mean.data'
       write(fnamegeneric(1:80),'(1a,i3.3)')
      &    '/tmp/smooth2Doperator',smoothOpNb
 #else
