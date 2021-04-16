@@ -33,7 +33,11 @@ c     == routine arguments ==
       integer ivartype
       _RL precondScalar
       character*( 80) fname
+#ifdef PLEIADES_LUSTRE_OPT
+      character(len=*) masktype
+#else
       character*(  9) masktype
+#endif
       character*( 80) weighttype
       integer nwetglobal(nr)
       integer mythid

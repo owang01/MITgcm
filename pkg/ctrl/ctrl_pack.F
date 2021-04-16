@@ -184,10 +184,17 @@ c     >>> Initialise control vector for optimcycle=0 <<<
           lxxadxx   = .TRUE.
           ictrlgrad = 1
           fcloc     = fmin
+#ifdef PLEIADES_LUSTRE_OPT4
+          write(cfile(1:128),'(4a,i4.4)')
+     &         trim(ctrlname),'_',yctrlid(1:10),
+     &         yctrlpospack, optimcycle
+         write(standardMessageUnit,*) 'ph-pack: packing ',trim(ctrlname)
+#else
           write(cfile(1:128),'(4a,i4.4)')
      &         ctrlname(1:9),'_',yctrlid(1:10),
      &         yctrlpospack, optimcycle
           write(standardMessageUnit,*) 'ph-pack: packing ',ctrlname(1:9)
+#endif
       else
 c     >>> Write gradient vector <<<
           lxxadxx   = .FALSE.
@@ -758,7 +765,11 @@ cc          write(weighttype(1:80),'(80a)') ' '
 cc          write(weighttype(1:80),'(a)') "wunit"
           call ctrl_set_pack_xy(
      &         cunit, ivartype, genarr2dPrecond(iarr),
+#ifdef PLEIADES_LUSTRE_OPT4
+     &         fname_local(ictrlgrad), "/tmp/maskCtrlC",
+#else
      &         fname_local(ictrlgrad), "maskCtrlC",
+#endif
      &         xx_genarr2d_weight(iarr),
      &         lxxadxx, mythid)
         endif
@@ -774,9 +785,13 @@ cc          write(weighttype(1:80),'(a)') "wunit"
 cc          write(weighttype(1:80),'(80a)') ' '
 cc          write(weighttype(1:80),'(a)') "wunit"
           call ctrl_set_pack_xyz(
-     &         cunit, ivartype, fname_local(ictrlgrad), "maskCtrlC",
-     &         xx_genarr3d_weight(iarr),
-     &         wunit, lxxadxx, mythid)
+#ifdef PLEIADES_LUSTRE_OPT4
+     &       cunit, ivartype, fname_local(ictrlgrad), "/tmp/maskCtrlC",
+#else
+     &       cunit, ivartype, fname_local(ictrlgrad), "maskCtrlC",
+#endif
+     &        xx_genarr3d_weight(iarr),
+     &        wunit, lxxadxx, mythid)
         endif
        enddo
 #endif
@@ -791,7 +806,11 @@ cc          write(weighttype(1:80),'(80a)') ' '
 cc          write(weighttype(1:80),'(a)') "wunit"
           call ctrl_set_pack_xy(
      &         cunit, ivartype, gentim2dPrecond(iarr),
+#ifdef PLEIADES_LUSTRE_OPT4
+     &         fname_local(ictrlgrad), "/tmp/maskCtrlC",
+#else
      &         fname_local(ictrlgrad), "maskCtrlC",
+#endif
      &         xx_gentim2d_weight(iarr),
      &         lxxadxx, mythid)
         endif
