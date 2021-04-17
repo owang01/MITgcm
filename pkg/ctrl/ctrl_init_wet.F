@@ -614,7 +614,7 @@ c#else
 #endif
 c#endif
 #if (defined (ALLOW_EFLUXP0_CONTROL))
-#ifdef PLEIADES_LUSTRE_OPT4
+#if (defined (PLEIADES_LUSTRE_OPT4) && !(defined PLEIADES_LUSTRE_OPT3))
       call active_write_xyz('/tmp/maskhFacV',hFacV,1,0,mythid,dummy)
 #else
       call active_write_xyz( 'maskhFacV', hFacV, 1, 0, mythid, dummy)

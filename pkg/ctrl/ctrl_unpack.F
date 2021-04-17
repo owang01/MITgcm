@@ -855,7 +855,7 @@ cc          write(weighttype(1:80),'(80a)') ' '
 cc          write(weighttype(1:80),'(a)') "wunit"
           call ctrl_set_unpack_xy(
      &         lxxadxx, cunit, ivartype, genarr2dPrecond(iarr),
-#ifdef PLEIADES_LUSTRE_OPT4
+#if (defined (PLEIADES_LUSTRE_OPT4) && !(defined PLEIADES_LUSTRE_OPT3))
      &         fname_local(ictrlgrad), "/tmp/maskCtrlC",
 #else
      &         fname_local(ictrlgrad), "maskCtrlC",
@@ -875,7 +875,7 @@ cc          write(weighttype(1:80),'(a)') "wunit"
           write(weighttype(1:80),'(80a)') ' '
           write(weighttype(1:80),'(a)') "wunit"
           call ctrl_set_unpack_xyz( lxxadxx, cunit, ivartype,
-#ifdef PLEIADES_LUSTRE_OPT4
+#if (defined (PLEIADES_LUSTRE_OPT4) && !(defined PLEIADES_LUSTRE_OPT3))
      &         fname_local(ictrlgrad), "/tmp/maskCtrlC",
 #else
      &         fname_local(ictrlgrad), "maskCtrlC",
@@ -896,7 +896,7 @@ cc          write(weighttype(1:80),'(a)') "wunit"
           write(weighttype(1:80),'(a)') "wunit"
           call ctrl_set_unpack_xy(
      &         lxxadxx, cunit, ivartype, gentim2dPrecond(iarr),
-#ifdef PLEIADES_LUSTRE_OPT4
+#if (defined (PLEIADES_LUSTRE_OPT4) && !(defined PLEIADES_LUSTRE_OPT3))
      &         fname_local(ictrlgrad), "/tmp/maskCtrlC",
 #else
      &         fname_local(ictrlgrad), "maskCtrlC",
