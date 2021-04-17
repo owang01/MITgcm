@@ -532,7 +532,7 @@ CEOP
       useCurrentDir = .FALSE.
 
       CALL ACTIVE_WRITE_3D_RL(
-     &                 trim(fnames(1)), adactive_var, globalFile,
+     &                 trim(fnames(2)), adactive_var, globalFile,
      &                 useCurrentDir, iRec, myNr,
      &                 REVERSE_SIMULATION, myIter, myThid )
 #else
@@ -637,7 +637,7 @@ CEOP
       useCurrentDir = .FALSE.
 
       CALL ACTIVE_WRITE_3D_RL(
-     &                 trim(fnames(1)), adactive_var, globalFile,
+     &                 trim(fnames(2)), adactive_var, globalFile,
      &                 useCurrentDir, iRec, myNr,
      &                 REVERSE_SIMULATION, myIter, myThid )
 #else
