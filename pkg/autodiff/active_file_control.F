@@ -476,6 +476,13 @@ C     force 64-bit io
 
 C     >>>>>>>>>>>>>>>>>>> FORWARD RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. FORWARD_SIMULATION) THEN
+#ifdef DSK_DEBUG
+      WRITE(msgBuf,'(A,I4,A,A)')
+     & ' ACTIVE_WRITE_3D_RL: FORWARD ', iRec,
+     & '  ', trim(activeVar_file)
+      CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                        SQUEEZE_RIGHT, myThid )
+#endif
         CALL MDS_WRITE_FIELD(
      I                activeVar_file, prec, globalFile, useCurrentDir,
      I                'RL', myNr, 1, myNr,
@@ -485,7 +492,6 @@ C     >>>>>>>>>>>>>>>>>>> FORWARD RUN <<<<<<<<<<<<<<<<<<<
 
 C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. REVERSE_SIMULATION) THEN
-
 #ifdef DSK_DEBUG
       WRITE(msgBuf,'(A,I4,A,A)')
      & ' ACTIVE_WRITE_3D_RL: REVERSE ', iRec,
