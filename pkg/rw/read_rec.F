@@ -386,7 +386,7 @@ c     ENDIF
 #ifdef ALLOW_MDSIO
 #ifdef DSK_DEBUG
       WRITE(msgBuf,'(A,I4,A,A,A)')
-     &  'READ_REC_XYZ_RL: ',iRec,' (', trim(fName),')'
+     &  'READ_REC_3D_RL: ',iRec,' (', trim(fName),')'
       CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                        SQUEEZE_RIGHT, myThid )
 #endif
