@@ -67,7 +67,9 @@ cnew(
       integer yday, ymod
       integer md, dd, sd, ld, wd
       character*(80) fnametmp
-!      logical exst
+#ifndef PLEIADES_LUSTRE_OPT
+      logical exst
+#endif
 cnew)
 
 c     == external functions ==
@@ -100,10 +102,12 @@ c     == end of interface ==
 
       write(fnametmp(1:80),'(2a,i4)')
      &     sla_file(1:il), '_', year
-!      inquire( file=fnametmp, exist=exst )
-!      if (.NOT. exst) then
-!         stop
-!      endif
+#ifndef PLEIADES_LUSTRE_OPT
+      inquire( file=fnametmp, exist=exst )
+      if (.NOT. exst) then
+         stop
+      endif
+#endif
 
       CALL READ_REC_3D_RL( fnametmp, cost_iprec, 1,
      &                   sla_obs, day, 1, myThid )
