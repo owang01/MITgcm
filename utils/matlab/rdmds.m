@@ -345,7 +345,7 @@ eval(allstr);
 
 N=reshape( dimlist , 3 , prod(size(dimlist))/3 );
 rep=[' dimList = [ ',sprintf('%i ',N(1,:)),']'];
-if ~isnan(nrecords) & nrecords > 1 & isempty(recnum)
+if ~isnan(nrecords) && nrecords > 1 && isempty(recnum)
  N=[N,[nrecords 1 nrecords]'];
 elseif ~isempty(recnum) & recnum>nrecords
  error('Requested record number is higher than the number of available records')
@@ -475,17 +475,17 @@ while (size(args,1) > 0)
  elseif deblank(args(1,:)) == 'real*8'
   WORDLENGTH=8;
   rtype='real*8';
- elseif deblank(args(1,:)) == 'n' | deblank(args(1,:)) == 'native'
+ elseif deblank(args(1,:)) == 'n' || deblank(args(1,:)) == 'native'
   ieee='n';
- elseif deblank(args(1,:)) == 'l' | deblank(args(1,:)) == 'ieee-le'
+ elseif deblank(args(1,:)) == 'l' || deblank(args(1,:)) == 'ieee-le'
   ieee='l';
- elseif deblank(args(1,:)) == 'b' | deblank(args(1,:)) == 'ieee-be'
+ elseif deblank(args(1,:)) == 'b' || deblank(args(1,:)) == 'ieee-be'
   ieee='b';
- elseif deblank(args(1,:)) == 'c' | deblank(args(1,:)) == 'cray'
+ elseif deblank(args(1,:)) == 'c' || deblank(args(1,:)) == 'cray'
   ieee='c';
- elseif deblank(args(1,:)) == 'a' | deblank(args(1,:)) == 'ieee-le.l64'
+ elseif deblank(args(1,:)) == 'a' || deblank(args(1,:)) == 'ieee-le.l64'
   ieee='a';
- elseif deblank(args(1,:)) == 's' | deblank(args(1,:)) == 'ieee-be.l64'
+ elseif deblank(args(1,:)) == 's' || deblank(args(1,:)) == 'ieee-be.l64'
   ieee='s';
  else
   error(['Optional argument ' args(1,:) ' is unknown'])
