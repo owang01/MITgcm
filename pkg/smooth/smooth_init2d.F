@@ -34,8 +34,13 @@ cgf the choices of smooth2Dtype and smooth2Dsize need comments...
 
       if ((smooth2Dtype(smoothOpNb).NE.0).AND.
      & (smooth2Dsize(smoothOpNb).EQ.2)) then
+#ifdef PLEIADES_LUSTRE_OPT
+      write(fnamegeneric(1:80),'(1a,i3.3)')
+     &    '/tmp/smooth2Dscales',smoothOpNb
+#else
       write(fnamegeneric(1:80),'(1a,i3.3)')
      &    'smooth2Dscales',smoothOpNb
+#endif
       CALL READ_REC_3D_RL(fnamegeneric,smoothprec,
      &           1, smooth2D_Lx,1,1,mythid)
       CALL READ_REC_3D_RL(fnamegeneric,smoothprec,

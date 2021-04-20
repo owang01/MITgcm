@@ -229,8 +229,13 @@ c compute variance and convert it to normalization factor:
       ENDIF
 
 c write smooth2Dnorm to file:
+#ifdef PLEIADES_LUSTRE_OPT
+      write(fnamegeneric(1:80),'(1a,i3.3)')
+     &    '/tmp/smooth2Dnorm',smoothOpNb
+#else
       write(fnamegeneric(1:80),'(1a,i3.3)')
      &    'smooth2Dnorm',smoothOpNb
+#endif
       CALL WRITE_REC_3D_RL(fnamegeneric,smoothprec,
      &            1,smooth2Dnorm,1,1,mythid)
       CALL EXCH_XY_RL ( smooth2Dnorm,  myThid )

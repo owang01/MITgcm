@@ -74,8 +74,13 @@ c read smoothing [i.e diffusion] operator:
       CALL EXCH_XYZ_RL ( smooth3D_kappaR, myThid )
 
 c read normalization field [i.e. 1/sqrt(var(filter))]:
+#ifdef PLEIADES_LUSTRE_OPT
+      write(fnamegeneric(1:80),'(1a,i3.3)')
+     &    '/tmp/smooth3Dnorm',smoothOpNb
+#else
       write(fnamegeneric(1:80),'(1a,i3.3)')
      &    'smooth3Dnorm',smoothOpNb
+#endif
       CALL READ_REC_3D_RL(fnamegeneric,smoothprec,
      &           Nr, smooth3Dnorm,1,1,mythid)
       CALL EXCH_XYZ_RL ( smooth3Dnorm, myThid )

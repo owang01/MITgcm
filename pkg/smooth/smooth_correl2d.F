@@ -50,8 +50,13 @@ c read smoothing [i.e diffusion] operator:
       CALL EXCH_XY_RL ( smooth2D_Kvy, myThid )
 
 c read normalization field [i.e. 1/sqrt(var(filter))]:
+#ifdef PLEIADES_LUSTRE_OPT
+      write(fnamegeneric(1:80),'(1a,i3.3)')
+     &    '/tmp/smooth2Dnorm',smoothOpNb
+#else
       write(fnamegeneric(1:80),'(1a,i3.3)')
      &    'smooth2Dnorm',smoothOpNb
+#endif
       CALL READ_REC_3D_RL(fnamegeneric,smoothprec,
      &           1, smooth2Dnorm,1,1,mythid)
       CALL EXCH_XY_RL ( smooth2Dnorm, myThid )

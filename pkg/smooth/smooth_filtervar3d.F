@@ -274,8 +274,13 @@ c compute variance and convert it to normalization factor:
       ENDIF
 
 c write smooth3Dnorm_3D to file:
+#ifdef PLEIADES_LUSTRE_OPT
+      write(fnamegeneric(1:80),'(1a,i3.3)')
+     &    '/tmp/smooth3Dnorm',smoothOpNb
+#else
       write(fnamegeneric(1:80),'(1a,i3.3)')
      &    'smooth3Dnorm',smoothOpNb
+#endif
       CALL WRITE_REC_3D_RL( fnamegeneric, smoothprec,
      &                      Nr, smooth3Dnorm, 1, 1, myThid )
       CALL EXCH_XYZ_RL ( smooth3Dnorm,  myThid )

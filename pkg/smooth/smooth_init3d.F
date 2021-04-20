@@ -42,8 +42,13 @@ cgf for now I focus on the simpler smooth3DtypeH=1 case
 c vertical smoothing:
 
       if (smooth3DsizeZ(smoothOpNb).EQ.3) then
+#ifdef PLEIADES_LUSTRE_OPT
+      write(fnamegeneric(1:80),'(1a,i3.3)')
+     &    '/tmp/smooth3DscalesZ',smoothOpNb
+#else
       write(fnamegeneric(1:80),'(1a,i3.3)')
      &    'smooth3DscalesZ',smoothOpNb
+#endif
       CALL READ_REC_3D_RL(fnamegeneric,smoothprec,
      &           Nr, smooth3D_Lz,1,1,mythid)
       CALL EXCH_XYZ_RL( smooth3D_Lz, mythid )
@@ -100,8 +105,13 @@ c avoid excessive vertical smoothing:
 c hoizontal smoothing:
 
       if (smooth3DsizeH(smoothOpNb).EQ.3) then
+#ifdef PLEIADES_LUSTRE_OPT
+      write(fnamegeneric(1:80),'(1a,i3.3)')
+     &    '/tmp/smooth3DscalesH',smoothOpNb
+#else
       write(fnamegeneric(1:80),'(1a,i3.3)')
      &    'smooth3DscalesH',smoothOpNb
+#endif
       CALL READ_REC_3D_RL(fnamegeneric,smoothprec,
      &           Nr, smooth3D_Lx,1,1,mythid)
       CALL READ_REC_3D_RL(fnamegeneric,smoothprec,
