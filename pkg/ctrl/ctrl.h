@@ -218,8 +218,8 @@ cph     &                      , tmpfld3d
      &                      yctrlpospack
       character*2 yadmark
 #ifdef PLEIADES_LUSTRE_OPT
-      character*13 ctrlname
-      character*13 costname
+      character*14 ctrlname
+      character*14 costname
 #else
       character*9 ctrlname
       character*9 costname
