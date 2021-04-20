@@ -131,7 +131,7 @@ C--   master thread of process 0, only, opens a global file
         CALL MDSFINDUNIT( ioUnit, myThid )
         length_of_rec=MDS_RECLEN( filePrec, nx_in*ny_in, myThid )
         OPEN( ioUnit, file=infile, status='old', access='direct',
-#if PLEIADES_LUSTRE_OPT
+#ifdef PLEIADES_LUSTRE_OPT
      &       action='read', recl=length_of_rec )
 #else
      &       recl=length_of_rec )
