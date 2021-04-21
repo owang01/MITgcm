@@ -198,7 +198,7 @@ C master thread of process 0, only, read from file
           irec = 1 + k-kLo + (irecord-1)*nNz
 
 #ifdef DSK_DEBUG
-        WRITE(msgBuf,'(A,2I4,3A,2I6,I8)')
+        WRITE(msgBuf,'(A,2I6,3A,2I6,I8)')
      &   ' MDS_READ_FIELD: Fast path reading ', k,irec,' ',trim(fName),
      &  ' ', fUnit, filePrec, xSize*ySize
         CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
