@@ -22,7 +22,7 @@ C     *==========================================================*
 C     \ev
 
 C     !USES:
-#ifdef PLEIADES_LUSTRE_OPT2
+#ifdef PLEIADES_LUSTRE_OPT6
       use dictionary_m
 #endif
       IMPLICIT NONE
@@ -90,7 +90,7 @@ C  else can do this.
 C For now, we will assume everything is ok and that the last record
 C  is written to the last consecutive record in the file.
 
-#ifdef PLEIADES_LUSTRE_OPT2
+#ifdef PLEIADES_LUSTRE_OPT6
       mUnit = fileHash%get1(trim(mFileName))
 
       if (mUnit .eq. -999) then
@@ -212,7 +212,7 @@ C-    Write title or comments (but ignored by rdmds)
       ENDIF
 
 C-    Close meta-file
-#ifdef PLEIADES_LUSTRE_OPT2
+#ifdef PLEIADES_LUSTRE_OPT6
       REWIND(mUnit)
 #else
       CLOSE(mUnit)
