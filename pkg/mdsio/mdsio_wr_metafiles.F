@@ -119,7 +119,11 @@ C Only do I/O if I am the master thread (and mpi process 0 IF useSingleCpuIO):
 
          IL  = ILNBLNK( fName )
          WRITE(dataFName,'(2A)') fName(1:IL),'.data'
+#ifdef PLEIADES_LUSTRE_OPT2
+         WRITE(metaFName,'(3A)') '/tmp/',trim(fName),'.meta'
+#else
          WRITE(metaFName,'(2A)') fName(1:IL),'.meta'
+#endif
          dimList(1,1) = xSize
          dimList(2,1) = 1
          dimList(3,1) = xSize
