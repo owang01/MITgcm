@@ -108,9 +108,9 @@ C     >>>>>>>>>>>>>>>>>>> FORWARD RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. FORWARD_SIMULATION) THEN
 
 #ifdef DSK_DEBUG
-      WRITE(msgBuf,'(A,I4,A,A)')
+      WRITE(msgBuf,'(A,I5,A,A)')
      & ' ACTIVE_READ_3D_RL: FORWARD ', iRec,
-     & '  ', trim(activeVar_file)
+     & ' ', trim(activeVar_file)
       CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                        SQUEEZE_RIGHT, myThid )
 #endif
@@ -157,9 +157,9 @@ C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. REVERSE_SIMULATION) THEN
 
 #ifdef DSK_DEBUG
-      WRITE(msgBuf,'(A,I4,A,A)')
+      WRITE(msgBuf,'(A,I5,A,A)')
      & ' ACTIVE_READ_3D_RL: REVERSE ', iRec,
-     & '  ', trim(activeVar_file)
+     & ' ', trim(activeVar_file)
       CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                        SQUEEZE_RIGHT, myThid )
 #endif
@@ -477,9 +477,9 @@ C     force 64-bit io
 C     >>>>>>>>>>>>>>>>>>> FORWARD RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. FORWARD_SIMULATION) THEN
 #ifdef DSK_DEBUG
-      WRITE(msgBuf,'(A,I4,A,A)')
+      WRITE(msgBuf,'(A,I5,A,A)')
      & ' ACTIVE_WRITE_3D_RL: FORWARD ', iRec,
-     & '  ', trim(activeVar_file)
+     & ' ', trim(activeVar_file)
       CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                        SQUEEZE_RIGHT, myThid )
 #endif
@@ -493,9 +493,9 @@ C     >>>>>>>>>>>>>>>>>>> FORWARD RUN <<<<<<<<<<<<<<<<<<<
 C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. REVERSE_SIMULATION) THEN
 #ifdef DSK_DEBUG
-      WRITE(msgBuf,'(A,I4,A,A)')
+      WRITE(msgBuf,'(A,I5,A,A)')
      & ' ACTIVE_WRITE_3D_RL: REVERSE ', iRec,
-     & '  ', trim(activeVar_file)
+     & ' ', trim(activeVar_file)
       CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                        SQUEEZE_RIGHT, myThid )
 #endif
@@ -611,9 +611,9 @@ C     >>>>>>>>>>>>>>>>>>> FORWARD RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. FORWARD_SIMULATION) THEN
 
 #ifdef DSK_DEBUG
-      WRITE(msgBuf,'(A,I4,A,A)')
+      WRITE(msgBuf,'(A,I5,A,A)')
      & ' ACTIVE_READ_3D_RS: FORWARD ', iRec,
-     & '  ', trim(activeVar_file)
+     & ' ', trim(activeVar_file)
       CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                        SQUEEZE_RIGHT, myThid )
 #endif
@@ -628,9 +628,9 @@ C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
       IF (theSimulationMode .EQ. REVERSE_SIMULATION) THEN
 
 #ifdef DSK_DEBUG
-      WRITE(msgBuf,'(A,I4,A,A)')
+      WRITE(msgBuf,'(A,I5,A,A)')
      & ' ACTIVE_READ_3D_RS: REVERSE ', iRec,
-     & '  ', trim(activeVar_file)
+     & ' ', trim(activeVar_file)
       CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                        SQUEEZE_RIGHT, myThid )
 #endif
