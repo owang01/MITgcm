@@ -35,6 +35,7 @@ c#include "tamc.h"
 
       smooth2DtotTime=nbt_in*smooth2DdelTime
 
+      call ecco_zero(dist_in,1,0.D0,myThid)
       CALL READ_REC_3D_RL(dist_file,smoothprec,
      &           1,dist_in,1,1,mythid)
 
