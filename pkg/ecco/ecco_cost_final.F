@@ -1230,7 +1230,7 @@ c--   Do global summation for each part of the cost function
 #ifdef ALLOW_GENCOST_CONTRIBUTION
        do num_var=1,NGENCOST
         if (no_gencost(num_var).GT.0) then
-         write(msgBuf,'(A,D22.15,i2.0)')
+         write(msgBuf,'(A,D22.15,i3.0)')
      &     ' --> f_gencost =',f_gencost(num_var),
      &      num_var
          call print_message( msgBuf, standardmessageunit,
