@@ -91,8 +91,10 @@ C     multi-node/multi-processor systems
 #else
 C     After opening regular files here, they are closed with STATUS='DELETE'
 #ifdef PLEIADES_LUSTRE_OPT
-      WRITE(scratchFile1,'(A,'//FMT_PROC_ID//')') '/tmp/scratch1.', myProcId
-      WRITE(scratchFile2,'(A,'//FMT_PROC_ID//')') '/tmp/scratch2.', myProcId
+      WRITE(scratchFile1,'(A,'//FMT_PROC_ID//')') '/tmp/scratch1.',
+     & myProcId
+      WRITE(scratchFile2,'(A,'//FMT_PROC_ID//')') '/tmp/scratch2.',
+     & myProcId
 #else
       WRITE(scratchFile1,'(A,'//FMT_PROC_ID//')') 'scratch1.', myProcId
       WRITE(scratchFile2,'(A,'//FMT_PROC_ID//')') 'scratch2.', myProcId
