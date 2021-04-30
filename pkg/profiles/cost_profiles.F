@@ -69,6 +69,7 @@ C     ========= Local variables =======================
       _RL prof_count1D(NLEVELMAX)
       _RL prof_weights1D_mean(NLEVELMAX)
       _RL recip_profiles_mean_indsamples(NVARMAX)
+      _RL  loc_prof_mask1D_cur(NLEVELMAX,nsx,nsy)
 
       _RL tmpr6, tmpr7, tmpr8, tmpr9
       Real*4 tmp99(NAVGBINMAX)
@@ -177,7 +178,7 @@ C find the vertical indices
               do K=1,NLEVELMAX
                 prof_traj1D(k)=0.
 C             prof_traj1D_mean(k)=0.
-C             prof_mask1D_cur(k,bi,bj)=0.
+              loc_prof_mask1D_cur(k,bi,bj)=0.
                prof_data1D(k)=0.
 C             prof_data1D_mean(k)=0.
                prof_weights1D(k)=0.
@@ -208,8 +209,13 @@ C             prof_data1D_mean(k)=0.
      &          prof_weights1D,bi,bj,myThid)
 
                do K=1,ProfDepthNo(num_file,bi,bj)
+                if(prof_traj1D(k).NE. 0. _d 0)then
+                 loc_prof_mask1D_cur(K,bi,bj)= 1. _d 0
+                else
+                 loc_prof_mask1D_cur(K,bi,bj)= 0. _d 0
+                endif
                 if (prof_weights1D(K).GT.0. _d 0
-     &           .AND. prof_mask1D_cur(K,bi,bj).NE. 0. _d 0
+     &           .AND. loc_prof_mask1D_cur(K,bi,bj).NE. 0. _d 0
      &             ) then
                  prof_traj1D_all_mean(itmp,
      &            prof_lev_comb(k,num_file,bi,bj),num_var)
@@ -467,7 +473,7 @@ c          enddo
             do K=1,NLEVELMAX
              prof_traj1D(k)=0.
              prof_traj1D_mean(k)=0.
-             prof_mask1D_cur(k,bi,bj)=0.
+             loc_prof_mask1D_cur(k,bi,bj)=0.
              prof_data1D(k)=0.
              prof_weights1D(k)=0.
 #ifdef ALLOW_PROFILES_SAMPLESPLIT_COST
@@ -510,6 +516,11 @@ C end of #ifndef ALLOW_PROFILES_SAMPLESPLIT_COST
      &           prof_weights1D,bi,bj,myThid)
 
              do K=1,ProfDepthNo(num_file,bi,bj)
+               if(prof_traj1D(k).NE. 0. _d 0)then
+                loc_prof_mask1D_cur(K,bi,bj)= 1. _d 0
+               else
+                loc_prof_mask1D_cur(K,bi,bj)= 0. _d 0
+               endif
                if (prof_weights1D(K).GT.0.
 #ifdef ALLOW_PROFILES_SAMPLESPLIT_COST
      &             .AND. prof_data1D_mean(K).NE. 0. _d 0
@@ -517,7 +528,7 @@ C end of #ifndef ALLOW_PROFILES_SAMPLESPLIT_COST
      &            ) then
                  objf_profiles(num_file,num_var,bi,bj)=
      &             objf_profiles(num_file,num_var,bi,bj)
-     &             +prof_weights1D(K)*prof_mask1D_cur(K,bi,bj)
+     &             +prof_weights1D(K)*loc_prof_mask1D_cur(K,bi,bj)
      &             *(prof_traj1D(K)-prof_data1D(K)-prof_traj1D_mean(K)
 #ifdef ALLOW_PROFILES_SAMPLESPLIT_COST
      &               + prof_data1D_mean(K)
@@ -530,7 +541,7 @@ C end of #ifndef ALLOW_PROFILES_SAMPLESPLIT_COST
      &              )
                  num_profiles(num_file,num_var,bi,bj)=
      &               num_profiles(num_file,num_var,bi,bj)
-     &               +prof_mask1D_cur(K,bi,bj)
+     &               +loc_prof_mask1D_cur(K,bi,bj)
                endif
              enddo
             endif
