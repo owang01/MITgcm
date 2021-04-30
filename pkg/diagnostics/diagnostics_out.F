@@ -242,6 +242,7 @@ C-        Empty diagnostics case :
                   DO j = 1-OLy,sNy+OLy
                     DO i = 1-OLx,sNx+OLx
                       qtmp1(i,j,k,bi,bj) = 0. _d 0
+                      qtmp2(i,j,k,bi,bj) = 0. _d 0
                     ENDDO
                   ENDDO
                 ENDDO
@@ -251,6 +252,19 @@ C-        Empty diagnostics case :
           ELSE
 C-        diagnostics is not empty :
             isComputed = 0
+
+            DO bj = myByLo(myThid), myByHi(myThid)
+              DO bi = myBxLo(myThid), myBxHi(myThid)
+                DO k = 1,nLevOutp
+                  DO j = 1-OLy,sNy+OLy
+                    DO i = 1-OLx,sNx+OLx
+                      qtmp1(i,j,k,bi,bj) = 0. _d 0
+                      qtmp2(i,j,k,bi,bj) = 0. _d 0
+                    ENDDO
+                  ENDDO
+                ENDDO
+              ENDDO
+            ENDDO
 
             IF ( debugLevel.GE.debLevB .AND. myThid.EQ.1 ) THEN
               IF ( ppFld.GE.1 ) THEN
