@@ -98,6 +98,8 @@ CADJ STORE VisbeckK(:,:,bi,bj) = comlev1_bibj, key=igmkey, byte=isbyte
          SlopeY(i,j)       = 0. _d 0
          dSigmaDrW(i,j)    = 0. _d 0
          dSigmaDrS(i,j)    = 0. _d 0
+         taperX(i,j)       = 0. _d 0
+         taperY(i,j)       = 0. _d 0
         ENDDO
        ENDDO
 #endif
