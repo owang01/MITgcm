@@ -64,8 +64,8 @@ c--   Only the master thread will do I/O.
       ir2 = (index(xx_fname,'r2.') - 1 )
 
 #ifdef DSK_DEBUG
-        WRITE(msgBuf,'(A,A,4I4)') 'ctrl_set_fname: ',
-     &     trim(xx_fname), len_trim(xx_fname), il, ibin, imask
+      WRITE(msgBuf,'(A,A,4I4)') 'ctrl_set_fname: ', trim(xx_fname),
+     &      len_trim(xx_fname), il, ibin, imask
       CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                        SQUEEZE_RIGHT, myThid )
 #endif
