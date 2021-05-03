@@ -118,11 +118,12 @@ C     bBij  :: base shift in Buffer index for tile bi,bj
       INTEGER fUnit, fUnit2
       LOGICAL EFP
       DOUBLE PRECISION e
-!      INTEGER iUnit,iNumber,iRecl
-!      LOGICAL lOpened
+#ifdef DSK_DEBUG
+      INTEGER iUnit,iNumber,iRecl
+      LOGICAL lOpened
+#endif
 #ifdef ALLOW_EXCH2
       INTEGER tN
-!      real(kind=4), allocatable :: buffer(:)
 #endif /* ALLOW_EXCH2 */
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 C Set dimensions:
@@ -157,35 +158,41 @@ C Only do I/O if I am the master thread (and mpi process 0 IF useSingleCpuIO):
       dataFName = trim(fName) // '.data'
       fUnit2 = fileHash%get1(trim(dataFName))
 
-!      if ((fUnit .ne. -999) .and. (fUnit2 .ne. -999))
-!     &  write(*,*) 'MDS_READ_FIELD: Both files!'
+#ifdef DSK_DEBUG
+      if ((fUnit .ne. -999) .and. (fUnit2 .ne. -999))
+     &  write(*,*) 'MDS_READ_FIELD: Both files!'
+#endif
 
       if (EFP .and. ((fUnit .ne. -999) .or. (fUnit2 .ne. -999))) then
         if (fUnit2 .ne. -999) then
-!          WRITE(msgBuf,'(A,A,A,3I4)')
-!     &      ' MDS_READ_FIELD: Fast path ',trim(dataFName), ' ', fUnit,
-!     &        fileHash%get3(trim(dataFName)),filePrec
-!          CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
-!     &                      SQUEEZE_RIGHT, myThid)
+#ifdef DSK_DEBUG
+          WRITE(msgBuf,'(A,A,A,3I4)')
+     &      ' MDS_READ_FIELD: Fast path ',trim(dataFName), ' ', fUnit,
+     &        fileHash%get3(trim(dataFName)),filePrec
+          CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                      SQUEEZE_RIGHT, myThid)
+#endif
           fUnit = fUnit2
         else
-!        WRITE(msgBuf,'(A,A,A,3I4)')
-!     &      ' MDS_READ_FIELD: Fast path ',trim(fName), ' ', fUnit,
-!     &        fileHash%get3(trim(fName)), filePrec
-!        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
-!     &                      SQUEEZE_RIGHT, myThid)
+#ifdef DSK_DEBUG
+        WRITE(msgBuf,'(A,A,A,3I4)')
+     &      ' MDS_READ_FIELD: Fast path ',trim(fName), ' ', fUnit,
+     &        fileHash%get3(trim(fName)), filePrec
+        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                      SQUEEZE_RIGHT, myThid)
+#endif
         endif
 
-!        INQUIRE (fUnit, OPENED=lOpened, NAME=FullName, ACTION=aAction,
-!     &           NUMBER=iUnit, DIRECT=aDirect, RECL=iRecl)
+#ifdef DSK_DEBUG
+        INQUIRE (fUnit, OPENED=lOpened, NAME=FullName, ACTION=aAction,
+     &           NUMBER=iUnit, DIRECT=aDirect, RECL=iRecl)
 
-!        WRITE(msgBuf,'(3A,3I4,L3)')
-!     &      ' MDS_READ_FIELD: Fast path inq ',trim(fName), ' ', fUnit,
-!     &        iUnit,filePrec, lOpened
-!        CALL PRINT_MESSAGE( trim(msgBuf), standardMessageUnit,
-!     &                      SQUEEZE_RIGHT, myThid)
-
-
+        WRITE(msgBuf,'(3A,3I4,L3)')
+     &      ' MDS_READ_FIELD: Fast path inq ',trim(fName), ' ', fUnit,
+     &        iUnit,filePrec, lOpened
+        CALL PRINT_MESSAGE( trim(msgBuf), standardMessageUnit,
+     &                      SQUEEZE_RIGHT, myThid)
+#endif
         globalFile = .true.
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 
@@ -539,7 +546,6 @@ C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
 
 C master thread of process 0, only, opens a global file
        IF ( iAmDoingIO ) THEN
-!        allocate(buffer(xSize*ySize))
 C If global file is visible to process 0, then open it here.
 C Otherwise stop program.
          IF ( globalFile) THEN
@@ -584,15 +590,16 @@ C master thread of process 0, only, read from file
         IF ( iAmDoingIO ) THEN
           irec = 1 + k-kLo + (irecord-1)*nNz
 
-!        WRITE(msgBuf,'(A,2I4,3A,4I6,I8)')
-!     &   ' MDS_READ_FIELD: First pass reading ', k,irec,' ',trim(fName),
-!     &  ' ',dUnit, fileHash%get3(trim(fName)), filePrec,xSize*ySize
-!        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
-!     &                      SQUEEZE_RIGHT, myThid)
+#ifdef DSK_DEBUG
+        WRITE(msgBuf,'(A,2I4,3A,4I6,I8)')
+     &   ' MDS_READ_FIELD: First pass reading ', k,irec,' ',trim(fName),
+     &  ' ',dUnit, fileHash%get3(trim(fName)), filePrec,xSize*ySize
+        CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                      SQUEEZE_RIGHT, myThid)
+#endif
 
           IF (filePrec .EQ. precFloat32) THEN
            READ(dUnit,rec=irec) ( xy_buffer_r4(i),i=1,xSize*ySize )
-           !READ(dUnit,rec=irec) buffer
 #ifdef _BYTESWAPIO
            CALL MDS_BYTESWAPR4( xSize*ySize, xy_buffer_r4 )
 #endif
@@ -611,7 +618,6 @@ C  to acces shared buffer while master thread is loading data into
 
         IF ( filePrec.EQ.precFloat32 ) THEN
           CALL SCATTER_2D_R4(
-!     U                        buffer,
      U                        xy_buffer_r4,
      O                        sharedLocBuf_r4,
      I                        xSize, ySize,
@@ -665,16 +671,16 @@ c      ENDDO k=kLo,kHi
 
        IF ( iAmDoingIO ) THEN
 
-!        INQUIRE (dUnit, OPENED=lOpened, NAME=FullName, ACTION=aAction,
-!     &           NUMBER=iUnit, DIRECT=aDirect, RECL=iRecl)
+#ifdef DSK_DEBUG
+        INQUIRE (dUnit, OPENED=lOpened, NAME=FullName, ACTION=aAction,
+     &           NUMBER=iUnit, DIRECT=aDirect, RECL=iRecl)
 
-!        WRITE(msgBuf,'(3A,3I4,L3)')
-!     &      ' MDS_READ_FIELD: First pass inq2 ',trim(fName), ' ', dUnit,
-!     &        iUnit,filePrec, lOpened
-!        CALL PRINT_MESSAGE( trim(msgBuf), standardMessageUnit,
-!     &                      SQUEEZE_RIGHT, myThid)
-
-!         !deallocate(buffer)
+        WRITE(msgBuf,'(3A,3I4,L3)')
+     &      ' MDS_READ_FIELD: First pass inq2 ',trim(fName), ' ', dUnit,
+     &        iUnit,filePrec, lOpened
+        CALL PRINT_MESSAGE( trim(msgBuf), standardMessageUnit,
+     &                      SQUEEZE_RIGHT, myThid)
+#endif
          if (.not. EFP) then
            CLOSE( dUnit )
 #ifdef DSK_DEBUG
@@ -710,11 +716,13 @@ C If we are reading from a global file then we open it here
      &        access='direct', recl=length_of_rec )
          fileIsOpen=.TRUE.
 
-!           WRITE(msgBuf,'(3A,I4,I8)')
-!     &      ' MDS_READ_FIELD: Opened global file (multi): ',
-!     &       trim(dataFName), ' ', dUnit, length_of_rec
-!            CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
-!     &                          SQUEEZE_RIGHT, myThid)
+#ifdef DSK_DEBUG
+           WRITE(msgBuf,'(3A,I4,I8)')
+     &      ' MDS_READ_FIELD: Opened global file (multi): ',
+     &       trim(dataFName), ' ', dUnit, length_of_rec
+            CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
+     &                          SQUEEZE_RIGHT, myThid)
+#endif
 #ifdef PLEIADES_LUSTRE_OPT2
          if (EFP) call fileHash%set(trim(dataFName), dUnit)
 #endif
