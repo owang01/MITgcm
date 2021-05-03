@@ -315,7 +315,9 @@ CADJ STORE xx_gentim2d_dummy = ctrltape, key = 1 , kind = isbyte
          do k2 = 1, maxCtrlProc
           if (xx_gentim2d_preproc(k2,iarr).EQ.'variaweight') jrec=irec
          enddo
-#ifdef PLEIADES_LUSTRE_OPT4
+#ifdef PLEIADES_LUSTRE_OPT
+! tmpDir is set in ctrl_readparms.F
+! ---------------------------------
          write(fname(1:80),'(2a)')
      &   trim(tmpDir), trim(xx_gentim2d_weight(iarr))
 #ifdef DSK_DEBUG

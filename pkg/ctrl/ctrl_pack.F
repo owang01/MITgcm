@@ -184,7 +184,7 @@ c     >>> Initialise control vector for optimcycle=0 <<<
           lxxadxx   = .TRUE.
           ictrlgrad = 1
           fcloc     = fmin
-#ifdef PLEIADES_LUSTRE_OPT4
+#ifdef PLEIADES_LUSTRE_OPT
           write(cfile(1:128),'(4a,i4.4)')
      &         trim(ctrlname),'_',yctrlid(1:10),
      &         yctrlpospack, optimcycle
@@ -208,7 +208,7 @@ c     >>> Write gradient vector <<<
 #else
           fcloc     = zeroRL
 #endif
-#ifdef PLEIADES_LUSTRE_OPT4
+#ifdef PLEIADES_LUSTRE_OPT
           write(cfile(1:128),'(4a,i4.4)')
      &         trim(costname),'_',yctrlid(1:10),
      &         yctrlpospack, optimcycle
@@ -765,7 +765,7 @@ cc          write(weighttype(1:80),'(80a)') ' '
 cc          write(weighttype(1:80),'(a)') "wunit"
           call ctrl_set_pack_xy(
      &         cunit, ivartype, genarr2dPrecond(iarr),
-#if (defined (PLEIADES_LUSTRE_OPT4) && !(defined PLEIADES_LUSTRE_OPT3))
+#if (defined (PLEIADES_LUSTRE_OPT) && !(defined PLEIADES_LUSTRE_OPT3))
      &         fname_local(ictrlgrad), "/tmp/maskCtrlC",
 #else
      &         fname_local(ictrlgrad), "maskCtrlC",
@@ -785,7 +785,7 @@ cc          write(weighttype(1:80),'(a)') "wunit"
 cc          write(weighttype(1:80),'(80a)') ' '
 cc          write(weighttype(1:80),'(a)') "wunit"
           call ctrl_set_pack_xyz(
-#if (defined (PLEIADES_LUSTRE_OPT4) && !(defined PLEIADES_LUSTRE_OPT3))
+#if (defined (PLEIADES_LUSTRE_OPT) && !(defined PLEIADES_LUSTRE_OPT3))
      &       cunit, ivartype, fname_local(ictrlgrad), "/tmp/maskCtrlC",
 #else
      &       cunit, ivartype, fname_local(ictrlgrad), "maskCtrlC",
@@ -806,7 +806,7 @@ cc          write(weighttype(1:80),'(80a)') ' '
 cc          write(weighttype(1:80),'(a)') "wunit"
           call ctrl_set_pack_xy(
      &         cunit, ivartype, gentim2dPrecond(iarr),
-#if (defined (PLEIADES_LUSTRE_OPT4) && !(defined PLEIADES_LUSTRE_OPT3))
+#if (defined (PLEIADES_LUSTRE_OPT) && !(defined PLEIADES_LUSTRE_OPT3))
      &         fname_local(ictrlgrad), "/tmp/maskCtrlC",
 #else
      &         fname_local(ictrlgrad), "maskCtrlC",

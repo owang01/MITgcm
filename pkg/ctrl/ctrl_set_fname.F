@@ -57,6 +57,8 @@ c--   Only the master thread will do I/O.
       write(fname(3)(1:80),'(80a)') ' '
 
 #ifdef PLEIADES_LUSTRE_OPT3
+! Uses tmpDir which is set in ctrl_readparms.F line 482
+! -----------------------------------------------------
       write(str,'(i10.10)') optimcycle
       iopt = (index(xx_fname,str) - 1 )
       ibin = (index(xx_fname,'.bin') - 1 )

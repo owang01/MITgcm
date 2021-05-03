@@ -479,7 +479,9 @@ cHFLUXM_CONTROL
         yadprefix           = 'g_'
         yadmark             = 'g_'
 #else
+#ifdef PLEIADES_LUSTRE_OPT
         tmpDir              = '/tmp/'
+#endif
         yadprefix           = 'ad'
         yadmark             = 'ad'
 #endif
