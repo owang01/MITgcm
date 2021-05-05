@@ -110,7 +110,11 @@ c--   only do interior, and exchange outside
       ENDDO
 
       CALL MDS_READ_FIELD(wFileCur,ctrlprec,.FALSE.,'RL',
+#ifdef PLEIADES_LUSTRE_OPT2
      &                    nR,1,nR,wFld3d,dummyRS,1,mythid, .FALSE.)
+#else
+     &                    nR,1,nR,wFld3d,dummyRS,1,mythid)
+#endif
       _EXCH_XYZ_RL( wFld3d, mythid )
 
       il=ilnblnk( xxFileCur )
@@ -322,7 +326,11 @@ c--   only do interior, and exchange outside
       ENDDO
 
       CALL MDS_READ_FIELD(wFileCur,ctrlprec,.FALSE.,'RL',
+#ifdef PLEIADES_LUSTRE_OPT2
      &                    1,1,1,wFld2d,dummyRS,1,mythid, .FALSE.)
+#else
+     &                    1,1,1,wFld2d,dummyRS,1,mythid)
+#endif
       _EXCH_XY_RL( wFld2d, mythid )
 
       il=ilnblnk( xxFileCur )

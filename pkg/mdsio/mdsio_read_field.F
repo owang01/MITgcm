@@ -11,8 +11,11 @@ C !INTERFACE:
      I   kSize,kLo,kHi,
      O   fldRL, fldRS,
      I   irecord,
-     I   myThid,
-     I   EnableFastPath )
+#ifdef PLEIADES_LUSTRE_OPT2
+     I   myThid, EnableFastPath )
+#else
+     I   myThid )
+#endif
 
 C !DESCRIPTION:
 C Arguments:
@@ -86,7 +89,9 @@ C !INPUT PARAMETERS:
       INTEGER kSize, kLo, kHi
       INTEGER irecord
       INTEGER myThid
+#ifdef PLEIADES_LUSTRE_OPT2
       LOGICAL, intent(in) :: EnableFastPath
+#endif
 C !OUTPUT PARAMETERS:
       _RL  fldRL(*)
       _RS  fldRS(*)
@@ -116,7 +121,9 @@ C     bBij  :: base shift in Buffer index for tile bi,bj
       INTEGER tNx, tNy, global_nTx
       INTEGER tBx, tBy, iGjLoc, jGjLoc
       INTEGER fUnit, fUnit2
+#ifdef PLEIADES_LUSTRE_OPT2
       LOGICAL EFP
+#endif
       DOUBLE PRECISION e
 #ifdef DSK_DEBUG
       INTEGER iUnit,iNumber,iRecl
@@ -139,9 +146,10 @@ C Set dimensions:
 #endif /* ALLOW_EXCH2 */
 
 C Assume nothing
+#ifdef PLEIADES_LUSTRE_OPT2
       EFP = .false.
       if(EnableFastPath) EFP = .true.
-
+#endif
       globalFile = .FALSE.
       fileIsOpen = .FALSE.
       IL  = ILNBLNK( fName )
@@ -224,7 +232,6 @@ C master thread of process 0, only, read from file
 #endif
           ENDIF
 C- endif iAmDoingIO
-!  1       REWIND( fUnit )
         ENDIF
 
 C Wait for all thread to finish. This prevents other threads to continue
@@ -360,7 +367,6 @@ C End of bi,bj loops
 #endif
 
 C- endif iAmDoingIO
-         !REWIND( fUnit )
        ENDIF
 
 C All threads wait for Master to finish reading into shared buffer
@@ -681,7 +687,9 @@ c      ENDDO k=kLo,kHi
         CALL PRINT_MESSAGE( trim(msgBuf), standardMessageUnit,
      &                      SQUEEZE_RIGHT, myThid)
 #endif
+#ifdef PLEIADES_LUSTRE_OPT2
          if (.not. EFP) then
+#endif
            CLOSE( dUnit )
 #ifdef DSK_DEBUG
             WRITE(msgBuf,'(3A,I4)')
@@ -690,8 +698,9 @@ c      ENDDO k=kLo,kHi
             CALL PRINT_MESSAGE( msgBuf, standardMessageUnit,
      &                          SQUEEZE_RIGHT, myThid)
 #endif
+#ifdef PLEIADES_LUSTRE_OPT2
          endif
-         !REWIND( dUnit )
+#endif
        ENDIF
 
 C---+----1----+----2----+----3----+----4----+----5----+----6----+----7-|--+----|
@@ -842,11 +851,14 @@ C (This is a place-holder for the active/passive mechanism
 
 C here We close the tiled MDS file
            IF ( fileIsOpen ) THEN
+#ifdef PLEIADES_LUSTRE_OPT2
              if (.not. EFP) then
+#endif
                CLOSE( dUnit )
                fileIsOpen = .FALSE.
+#ifdef PLEIADES_LUSTRE_OPT2
              endif
-             !REWIND( dUnit )
+#endif
            ENDIF
 
 C--- End Global File / tile-file cases
@@ -858,11 +870,14 @@ C End of bi,bj loops
 
 C If global file was opened then close it
         IF (fileIsOpen .AND. globalFile) THEN
+#ifdef PLEIADES_LUSTRE_OPT2
           if (.not. EFP) then
+#endif
             CLOSE( dUnit )
             fileIsOpen = .FALSE.
+#ifdef PLEIADES_LUSTRE_OPT2
           endif
-          !REWIND( dUnit )
+#endif
         ENDIF
 
 #ifdef _BYTESWAPIO

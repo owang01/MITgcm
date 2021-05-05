@@ -61,12 +61,20 @@ C Local variables
         CALL MDS_READ_FIELD(
      I                fName, filePrec, .FALSE., arrType, nNz, 1, nNz,
      O                arr, dummyRS,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                irecord, myThid, .FALSE. )
+#else
+     I                irecord, myThid )
+#endif
       ELSE
         CALL MDS_READ_FIELD(
      I                fName, filePrec, .FALSE., arrType, nNz, 1, nNz,
      O                dummyRL, arr,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                irecord, myThid, .FALSE. )
+#else
+     I                irecord, myThid )
+#endif
       ENDIF
 
 #else /* USE_OBSOLETE_MDS_RW_FIELD */
@@ -127,12 +135,20 @@ C Local variables
         CALL MDS_READ_FIELD(
      I                fName, filePrec, .TRUE., arrType, nNz, 1, nNz,
      O                arr, dummyRS,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                irecord, myThid, .FALSE. )
+#else
+     I                irecord, myThid )
+#endif
       ELSE
         CALL MDS_READ_FIELD(
      I                fName, filePrec, .TRUE., arrType, nNz, 1, nNz,
      O                dummyRL, arr,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                irecord, myThid, .FALSE. )
+#else
+     I                irecord, myThid )
+#endif
       ENDIF
 
 #else /* USE_OBSOLETE_MDS_RW_FIELD */

@@ -53,7 +53,11 @@ C     e.g. U.0000000100
      I                     fullName, readBinaryPrec, useCurrentDir,
      I                     fType, nNz, 1, nNz,
      O                     field, dummyRS,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                     iRec, myThid, .FALSE. )
+#else
+     I                     iRec, myThid )
+#endif
 #endif
       RETURN
       END

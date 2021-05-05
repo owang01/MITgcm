@@ -329,11 +329,19 @@ CADJ STORE xx_gentim2d_dummy = ctrltape, key = 1 , kind = isbyte
 #endif
          CALL MDS_READ_FIELD( trim(fname),ctrlprec,
      &    .FALSE.,'RL',1,1,1,wgentim2d(1-Olx,1-Oly,1,1,iarr),
+#ifdef PLEIADES_LUSTRE_OPT2
      &    dummyRS,jrec,myThid, .FALSE. )
+#else
+     &    dummyRS,jrec,myThid )
+#endif
 #else
          CALL MDS_READ_FIELD( xx_gentim2d_weight(iarr),ctrlprec,
      &    .FALSE.,'RL',1,1,1,wgentim2d(1-Olx,1-Oly,1,1,iarr),
+#ifdef PLEIADES_LUSTRE_OPT2
      &    dummyRS,jrec,myThid, .FALSE. )
+#else
+     &    dummyRS,jrec,myThid )
+#endif
 #endif
 #ifdef ALLOW_SMOOTH
          IF (useSMOOTH) THEN

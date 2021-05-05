@@ -355,8 +355,11 @@ C--   read in array "field"
      I                       fName, fPrec, useCurrentDir,
      I                       fType, nNz, 1, nNz,
      O                       field, dummyRS,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                       nj, myThid, .TRUE. )
-
+#else
+     I                       nj, myThid )
+#endif
 #endif
       ENDIF
 
@@ -490,8 +493,11 @@ C--   read in array "field"
      I                       fName, fPrec, useCurrentDir,
      I                       fType, kSiz, kLo, kHi,
      O                       field, dummyRS,
-     I                       nj, myThid, .FALSE. )
-
+#ifdef PLEIADES_LUSTRE_OPT2
+     I                       nj, myThid, .TRUE. )
+#else
+     I                       nj, myThid )
+#endif
 #endif
       ENDIF
 
@@ -619,8 +625,11 @@ C--   read in array "field"
      I                       fName, fPrec, useCurrentDir,
      I                       fType, kSiz, kLo, kHi,
      O                       dummyRL, field,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                       nj, myThid, .FALSE. )
-
+#else
+     I                       nj, myThid )
+#endif
 #endif
       ENDIF
 

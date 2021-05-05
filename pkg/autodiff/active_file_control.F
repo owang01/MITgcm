@@ -119,7 +119,11 @@ C     Read the active variable from file.
      I                activeVar_file, prec, useCurrentDir,
      I                'RL', myNr, 1, myNr,
      O                active_var, dummyRS,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                iRec, myThid, .FALSE. )
+#else
+     I                iRec, myThid )
+#endif
 
         IF ( lAdInit ) THEN
 
@@ -167,7 +171,11 @@ C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
      I                activeVar_file, prec, useCurrentDir,
      I                'RL', Nr, 1, myNr,
      O                active_data_t, dummyRS,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                iRec, myThid, .FALSE. )
+#else
+     I                iRec, myThid )
+#endif
 
 C     Add active_var from appropriate location to data.
         DO bj = myByLo(myThid), myByHi(myThid)
@@ -218,7 +226,11 @@ C     Read the active variable from file.
      I                activeVar_file, prec, useCurrentDir,
      I                'RL', myNr, 1, myNr,
      O                active_var, dummyRS,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                iRec, myThid, .FALSE. )
+#else
+     I                iRec, myThid )
+#endif
       ENDIF
 
       RETURN
@@ -319,7 +331,11 @@ C     Read the active variable from file.
      I                activeVar_file, prec, useCurrentDir,
      I                'RS', myNr, 1, myNr,
      O                dummyRL, active_var,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                iRec, myThid, .FALSE. )
+#else
+     I                iRec, myThid )
+#endif
 
         IF ( lAdInit ) THEN
 C     Initialise the corresponding adjoint variable on the
@@ -354,7 +370,11 @@ C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
      I                activeVar_file, prec, useCurrentDir,
      I                'RS', Nr, 1, myNr,
      O                dummyRL, active_data_t,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                iRec, myThid, .FALSE. )
+#else
+     I                iRec, myThid )
+#endif
 
 C     Add active_var from appropriate location to data.
         DO bj = myByLo(myThid), myByHi(myThid)
@@ -400,7 +420,11 @@ C     Read the active variable from file.
      I                activeVar_file, prec, useCurrentDir,
      I                'RS', myNr, 1, myNr,
      O                dummyRL, active_var,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                iRec, myThid, .FALSE. )
+#else
+     I                iRec, myThid )
+#endif
       ENDIF
 
       RETURN
@@ -503,7 +527,11 @@ C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
      I                activeVar_file, prec, useCurrentDir,
      I                'RL', Nr, 1, myNr,
      O                active_data_t, dummyRS,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                iRec, myThid, .FALSE. )
+#else
+     I                iRec, myThid )
+#endif
 
 C     Add active_var from appropriate location to data.
         DO bj = myByLo(myThid), myByHi(myThid)
@@ -638,7 +666,11 @@ C     >>>>>>>>>>>>>>>>>>> ADJOINT RUN <<<<<<<<<<<<<<<<<<<
      I                activeVar_file, prec, useCurrentDir,
      I                'RS', Nr, 1, myNr,
      O                dummyRL, active_data_t,
+#ifdef PLEIADES_LUSTRE_OPT2
      I                iRec, myThid, .FALSE. )
+#else
+     I                iRec, myThid )
+#endif
 
 C     Add active_var from appropriate location to data.
         DO bj = myByLo(myThid), myByHi(myThid)
