@@ -36,7 +36,7 @@ c     == routine arguments ==
 c     == local variables ==
 
       integer ii
-      integer il,ibin,imask,ir2,iopt
+      integer il,ibin,imask,ir2,iopt,iadj
       CHARACTER*(MAX_LEN_MBUF) msgBuf
       CHARACTER(len=10) str
 
@@ -64,6 +64,7 @@ c--   Only the master thread will do I/O.
       ibin = (index(xx_fname,'.bin') - 1 )
       imask = (index(xx_fname,'mask') - 1 )
       ir2 = (index(xx_fname,'r2.') - 1 )
+      iadj = (index(xx_fname,'ADJ') - 1 )
 
 #ifdef DSK_DEBUG
       WRITE(msgBuf,'(A,A,4I4)') 'ctrl_set_fname: ', trim(xx_fname),
@@ -72,10 +73,11 @@ c--   Only the master thread will do I/O.
      &                        SQUEEZE_RIGHT, myThid )
 #endif
 
-! Don't add optimcycle to files that already have it or those matching mask* or *.bin or r2.*
-! -------------------------------------------------------------------------------------------
+! Don't add optimcycle to files that already have it or those matching mask*
+! or *.bin or r2.* or ADJ*
+! --------------------------------------------------------------------------
       if ((ibin .GT. 0 .OR. imask .EQ. 0
-     & .OR. ir2 .EQ. 0 .OR. iopt .GT. 0)
+     & .OR. ir2 .EQ. 0 .OR. iopt .GT. 0 .OR. iadj .EQ. 0)
      &  .AND. il .LE. 80) then
         write(fname(1),'(2a)') trim(tmpDir), trim(xx_fname)
         write(fname(2),'(3a)') trim(tmpDir), yadprefix, trim(xx_fname)
