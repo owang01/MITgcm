@@ -434,6 +434,7 @@ CADJ STORE recipLambda(:,:)    = comlev1_bibj_k, key=kkey, byte=isbyte
 #endif /* ALLOW_AUTODIFF_TAMC */
 
 C     Calculate slopes for use in tensor, taper and/or clip
+CADJ INCOMPLETE taperFct
        CALL GMREDI_SLOPE_LIMIT(
      O             SlopeX, SlopeY,
      O             SlopeSqr, taperFct,

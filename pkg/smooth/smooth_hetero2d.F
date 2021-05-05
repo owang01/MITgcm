@@ -35,7 +35,17 @@ c#include "tamc.h"
 
       smooth2DtotTime=nbt_in*smooth2DdelTime
 
-      call ecco_zero(dist_in,1,0.D0,myThid)
+      DO bj=myByLo(myThid),myByHi(myThid)
+       DO bi=myBxLo(myThid),myBxHi(myThid)
+         DO j=1-OLy,sNy+OLy
+          DO i=1-OLx,sNx+OLx
+          dist_in(i,j,bi,bj) = 0. _d 0
+          ENDDO
+         ENDDO
+       ENDDO
+      ENDDO
+
+CADJ INCOMPLETE dist_in
       CALL READ_REC_3D_RL(dist_file,smoothprec,
      &           1,dist_in,1,1,mythid)
 

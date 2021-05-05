@@ -123,6 +123,7 @@ C      Gradient of Sigma below U and V points
        ENDDO
 
 C      Calculate slopes , taper and/or clip
+CADJ INCOMPLETE taperX,taperY
        CALL GMREDI_SLOPE_PSI(
      O             taperX, taperY,
      U             SlopeX, SlopeY,

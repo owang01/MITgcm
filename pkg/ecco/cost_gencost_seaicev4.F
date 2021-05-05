@@ -231,6 +231,7 @@ c--1.2.A sea-ice concentration barfile
         call cost_gencal(areabarfile,gencost_datafile(igen_conc),
      &   irec,localstartdate,localperiod,fname1,
      &   fname0,localrec,obsrec,exst,myThid)
+CADJ INCOMPLETE areabar
         call cost_genread(fname1,areabar,localtmp,irec,nnzbar,
      &       nrecloc,preproc,preproc_c,preproc_i,preproc_r,
      &       dummy,myThid)

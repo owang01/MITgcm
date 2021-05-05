@@ -330,6 +330,7 @@ CADJ STORE hFacZ(:,:) =
 CADJ &     comlev1_bibj_k, key = imomkey, byte = isbyte
 #endif
 
+CADJ INCOMPLETE hDiv
        CALL MOM_CALC_HDIV(bi,bj,k,2,uFld,vFld,hDiv,myThid)
 
        IF ( useVariableVisc .OR. useStrainTensionVisc ) THEN
