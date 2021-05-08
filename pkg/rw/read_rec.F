@@ -488,6 +488,7 @@ c     ENDIF
 #else
      I                     iRec, myThid )
 #endif
+#endif
       RETURN
       END
 
