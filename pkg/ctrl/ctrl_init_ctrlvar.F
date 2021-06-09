@@ -88,8 +88,8 @@ c     _END_MASTER( mythid )
      &                        SQUEEZE_RIGHT, myThid )
 #endif
               call ctrl_set_globfld_xyz( fname(2), ivarindex, mythid)
-#endif
             endif
+#endif
             if ( ( doInitXX .AND. optimcycle.eq.0 ) .OR. doAdmTlm ) then
 #ifdef DSK_DEBUG
               WRITE(msgBuf,'(A,A)')
