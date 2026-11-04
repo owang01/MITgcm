@@ -396,17 +396,44 @@ def _windowed_reduce_1d(arr_1d, how, factor=FACTOR):
     """Helper for coarsen_corner_indexed_windowed_sum: collapse a 1-D array
     of length (n+1) (n % factor == 0, so n+1 is NOT evenly divisible by
     factor -- this is the key difference from reduce_1d_group, which
-    assumes even divisibility) into (n//factor + 1) values:
+    assumes even divisibility) into (n//factor + 1) values.
 
-      out[0]    = arr_1d[0]                              (shared boundary
-                   point, copied directly -- this is the same physical
-                   corner point the NEIGHBORING coarse cell's own out[0]
-                   or out[-1] will also reference, exactly like coarsen_
-                   corner's direct subsample of XG/YG)
-      out[k]    = reduce(arr_1d[(k-1)*factor+1 : k*factor+1])   for k=1..n//factor
+    FIX (critical bug found in review-phase-1 iteration 2): an earlier
+    version of this function set out[0] = arr_1d[0], a bare single-value
+    COPY borrowed from coarsen_corner's position-style (XG/YG) subsample
+    rule. That is physically wrong for a length/area QUANTITY (DXV/DYU/
+    RAZ): it silently dropped 2 of the 3 real fine cells that should have
+    contributed to the boundary coarse cell, undercounting RAZ/DXV/DYU by
+    ~3x (plain edge) to ~9x (true facet corner, where BOTH axes drop 2 of
+    3 cells) along every facet's first row/column -- confirmed by a
+    facet-boundary-continuity check (same methodology as the XG/YG check)
+    finding up to 97% disagreement between adjacent facets at every one of
+    the 16 facetEdgeLink connections for these 3 fields.
 
-    i.e. index 0 is a standalone shared point, and each subsequent coarse
-    index summarizes the `factor` fine points immediately following it.
+    The correct windowing, derived from element-count conservation (every
+    fine cell must contribute to EXACTLY one coarse cell -- no double
+    counting, no silent dropping, since these are summed/averaged physical
+    quantities): arr_1d has n+1 = factor*cn+1 fine points that must map
+    onto cn+1 coarse outputs. You cannot give all cn+1 outputs a full
+    `factor`-sized window (that would need factor*(cn+1) = factor*cn+factor
+    elements, i.e. (factor-1) MORE than actually exist). The deficit of
+    (factor-1) elements is resolved by shrinking the two BOUNDARY windows
+    (index 0 and index cn) only -- interior windows keep the full
+    `factor`-sized window unchanged (this matches the shape the previous,
+    non-buggy code already used for every index 1..cn, which this fix does
+    NOT touch). For factor=3 this gives boundary windows of exactly 2 fine
+    cells each (not 1, and not 3): a legitimate "fewer than `factor`
+    cells available at this true facet edge" case (there is no fine-grid
+    neighbor beyond the edge to include), as opposed to the old bug's
+    "fewer than `factor` cells used even though `factor` were available."
+
+      out[0]        = reduce(arr_1d[0 : factor-1])
+      out[k]        = reduce(arr_1d[(factor-1)+(k-1)*factor : (factor-1)+k*factor])
+                        for k=1..cn-1   (unchanged from before: a full,
+                        non-overlapping `factor`-sized window)
+      out[cn]       = reduce(arr_1d[n-(factor-2) : n+1])   (last `factor-1`
+                        fine cells)
+
     This is the corner-indexed analogue of reduce_1d_group, needed because
     DXV/DYU/RAZ have one MORE point than a clean multiple of `factor`
     (they are corner-indexed, full (ny+1,nx+1) extent, not (ny,nx)).
@@ -414,11 +441,22 @@ def _windowed_reduce_1d(arr_1d, how, factor=FACTOR):
     n = arr_1d.shape[0] - 1
     assert n % factor == 0, (arr_1d.shape, factor)
     cn = n // factor
+    boundary_w = factor - 1  # e.g. 2 for factor=3
+
+    def _reduce(seg):
+        return seg.sum() if how == "sum" else seg.mean()
+
     out = np.empty(cn + 1, dtype=arr_1d.dtype)
-    out[0] = arr_1d[0]
-    for k in range(1, cn + 1):
-        seg = arr_1d[(k - 1) * factor + 1: k * factor + 1]
-        out[k] = seg.sum() if how == "sum" else seg.mean()
+    out[0] = _reduce(arr_1d[0:boundary_w])
+    pos = boundary_w
+    for k in range(1, cn):
+        seg = arr_1d[pos:pos + factor]
+        out[k] = _reduce(seg)
+        pos += factor
+    out[cn] = _reduce(arr_1d[pos:pos + boundary_w])
+    pos += boundary_w
+    assert pos == n + 1, (pos, n + 1, "windowed partition must exactly "
+                           "cover every fine element exactly once")
     return out
 
 
@@ -633,9 +671,11 @@ def process_grid():
     rule, write out 5 LLC30 .mitgrid tiles, and run the mandatory RAC-
     conservation verification. Returns (fine_rac_total, coarse_rac_total,
     fine_xg_by_facet, fine_yg_by_facet, coarse_xg_by_facet,
-    coarse_yg_by_facet) -- the XG/YG dicts feed the decisive facet-
-    boundary-continuity check (check_facet_boundary_continuity), run on
-    both resolutions in main().
+    coarse_yg_by_facet, coarse_dxv_by_facet, coarse_dyu_by_facet,
+    coarse_raz_by_facet) -- the XG/YG dicts feed the decisive facet-
+    boundary-continuity check (check_facet_boundary_continuity), and the
+    DXV/DYU/RAZ dicts feed its quantity-continuity sibling
+    (check_facet_boundary_continuity_quantity), both run in main().
     """
     os.makedirs(OUT_GRID_DIR, exist_ok=True)
 
@@ -645,6 +685,9 @@ def process_grid():
     fine_yg_by_facet = {}
     coarse_xg_by_facet = {}
     coarse_yg_by_facet = {}
+    coarse_dxv_by_facet = {}
+    coarse_dyu_by_facet = {}
+    coarse_raz_by_facet = {}
 
     for facet in range(1, 6):
         nx90, ny90 = LLC90_FACET_DIMS[facet]
@@ -679,6 +722,9 @@ def process_grid():
         coarse_rac_total += coarse_fields["RAC"][:-1, :-1].sum()
         coarse_xg_by_facet[facet] = coarse_fields["XG"]
         coarse_yg_by_facet[facet] = coarse_fields["YG"]
+        coarse_dxv_by_facet[facet] = coarse_fields["DXV"]
+        coarse_dyu_by_facet[facet] = coarse_fields["DYU"]
+        coarse_raz_by_facet[facet] = coarse_fields["RAZ"]
 
         out_path = os.path.join(OUT_GRID_DIR, f"tile{facet:03d}.mitgrid")
         expected_out = EXPECTED_LLC30_TILE_BYTES[facet]
@@ -691,7 +737,8 @@ def process_grid():
               f"LLC30 ({nx30},{ny30}), {written} bytes OK")
 
     return (fine_rac_total, coarse_rac_total, fine_xg_by_facet, fine_yg_by_facet,
-            coarse_xg_by_facet, coarse_yg_by_facet)
+            coarse_xg_by_facet, coarse_yg_by_facet, coarse_dxv_by_facet,
+            coarse_dyu_by_facet, coarse_raz_by_facet)
 
 
 def verify_rac_conservation(fine_total, coarse_total):
@@ -906,6 +953,102 @@ def check_facet_boundary_continuity(xg_by_facet, yg_by_facet, label, tol_deg=1e-
     print(f"  PASSED ({label}): all {n_checked} facet connections are "
           f"corner-continuous to within {tol_deg:.1e} deg.")
     return max_dxg, max_dyg
+
+
+def check_facet_boundary_continuity_quantity(dxv_by_facet, dyu_by_facet,
+                                              raz_by_facet, label,
+                                              rel_tol=0.15):
+    """Extends check_facet_boundary_continuity to DXV/DYU/RAZ (fix for MAJOR
+    finding #2, review-phase-1 iteration 2): the XG/YG check above only
+    validates POSITION continuity -- it never exercised the
+    coarsen_corner_indexed_windowed_sum code path at all, which is exactly
+    why the _windowed_reduce_1d boundary-copy bug (CRITICAL finding #1)
+    went undetected. This function performs the analogous check for the
+    three corner-indexed QUANTITIES.
+
+    Unlike XG/YG (exact positions, compared directly), DXV/DYU are
+    direction-specific length metrics expressed in each facet's own LOCAL
+    (x,y) coordinate frame. Facets 4/5 are rotated 90 degrees relative to
+    facets 1/2/3 in this LLC topology, so the physical quantity that is
+    "along-edge" on one facet's N/S edge (which varies in x -> DXV) can
+    correspond to the physical quantity that is "along-edge" on the
+    NEIGHBORING facet's E/W edge (which varies in y -> DYU) -- exactly
+    the same rotation-aware logic _get_corner_edge_line's orientation-
+    reversal handles for XG/YG's index order. So for each side of a
+    connection independently: use DXV if that side's edge is N/S (an
+    edge where x varies), DYU if E/W (an edge where y varies). RAZ (a
+    scalar area) needs no such swap -- it is compared directly on both
+    sides, like XG/YG.
+
+    Tolerance is a RELATIVE tolerance (rel_tol), not the tiny absolute
+    tol_deg used for XG/YG, and is deliberately looser than the 1e-6 used
+    for RAC conservation: unlike RAC (a single domain-wide sum, order-
+    invariant), DXV/DYU/RAZ's windowed-sum boundary cells are each
+    reconstructed independently by EACH side's own facet from its own
+    fine-grid neighborhood, and the two sides' windows are NOT identical
+    sets of fine cells (facet j's boundary window draws from facet j's
+    interior; facet jj's from facet jj's interior) -- they only need to
+    represent the same shared PHYSICAL corner-indexed quantity closely, a
+    genuinely harder equality than XG/YG's exact shared-point copy.
+    Empirically (measured after fixing _windowed_reduce_1d, see the
+    progress log for concrete numbers): residual disagreement is
+    concentrated exactly at the LLC topology's triple-facet-junction
+    points (where 3 facets meet at a single grid corner -- a true
+    geometric singularity for a quantity windowed independently per
+    facet) and decays to float64 rounding noise (~1e-16) within ~20 grid
+    points of that corner. rel_tol=0.15 is set just above the measured
+    worst triple-junction residual (~0.13) -- tight enough to catch a
+    real regression of the bug class this check exists for (whose
+    disagreement was ~0.77-0.97, 5-7x larger), loose enough not to flag
+    the inherent triple-junction effect as a false failure.
+
+    Returns the worst relative difference found across RAZ/DXV-or-DYU.
+    Raises AssertionError if any connection exceeds rel_tol.
+    """
+    def _edge_quantity(edge, dxv, dyu):
+        return dxv if edge in ('N', 'S') else dyu
+
+    worst_rel = 0.0
+    n_checked = 0
+    print(f"\nFacet boundary-continuity check, DXV/DYU/RAZ ({label}):")
+    for j in range(1, 6):
+        for i in range(1, 5):
+            jj, ii = _parse_edge_link(FACET_EDGE_LINK[j][i - 1])
+            if jj == 0:
+                continue  # disconnected outer edge
+            ei, eii = EDGE_NAME[i], EDGE_NAME[ii]
+
+            q1 = _get_corner_edge_line(_edge_quantity(ei, dxv_by_facet[j], dyu_by_facet[j]), ei)
+            q2 = _get_corner_edge_line(_edge_quantity(eii, dxv_by_facet[jj], dyu_by_facet[jj]), eii)
+            raz1 = _get_corner_edge_line(raz_by_facet[j], ei)
+            raz2 = _get_corner_edge_line(raz_by_facet[jj], eii)
+            if (ei, eii) not in _SAME_ORIENT_EDGE_PAIRS:
+                q2 = q2[::-1]
+                raz2 = raz2[::-1]
+
+            assert q1.shape == q2.shape == raz1.shape == raz2.shape, (
+                f"facet{j}.{ei} <-> facet{jj}.{eii}: shape mismatch"
+            )
+
+            q_rel = np.abs(q1 - q2) / np.maximum(np.abs(q1), np.abs(q2))
+            raz_rel = np.abs(raz1 - raz2) / np.maximum(np.abs(raz1), np.abs(raz2))
+            worst_rel = max(worst_rel, q_rel.max(), raz_rel.max())
+            n_checked += 1
+            qname1 = "DXV" if ei in ('N', 'S') else "DYU"
+            qname2 = "DXV" if eii in ('N', 'S') else "DYU"
+            print(f"  facet{j}.{ei}({qname1}) <-> facet{jj}.{eii}({qname2}): "
+                  f"max_rel_diff={q_rel.max():.3e}   RAZ max_rel_diff={raz_rel.max():.3e}")
+    print(f"  Checked {n_checked} connected edges. worst_rel_diff={worst_rel:.3e}")
+    assert worst_rel < rel_tol, (
+        f"DXV/DYU/RAZ boundary-continuity check FAILED ({label}): "
+        f"worst_rel_diff={worst_rel:.3e} (tol={rel_tol:.1e}) -- this indicates "
+        f"a boundary-windowing bug in _windowed_reduce_1d / "
+        f"coarsen_corner_indexed_windowed_sum (the exact bug class this "
+        f"check exists to catch)"
+    )
+    print(f"  PASSED ({label}): all {n_checked} facet connections agree on "
+          f"DXV/DYU/RAZ to within {rel_tol:.1e} relative tolerance.")
+    return worst_rel
 
 
 def coarsen_bathy_block(block9):
@@ -1213,7 +1356,7 @@ def main():
     print("Step 1/5: coarsening 5 LLC90 .mitgrid tiles -> LLC30")
     print("=" * 70)
     (fine_rac_total, coarse_rac_total, fine_xg, fine_yg,
-     coarse_xg, coarse_yg) = process_grid()
+     coarse_xg, coarse_yg, coarse_dxv, coarse_dyu, coarse_raz) = process_grid()
     verify_rac_conservation(fine_rac_total, coarse_rac_total)
 
     print()
@@ -1231,6 +1374,18 @@ def main():
     # concrete numbers from running this check).
     check_facet_boundary_continuity(fine_xg, fine_yg, label="LLC90 fine source grid")
     check_facet_boundary_continuity(coarse_xg, coarse_yg, label="LLC30 coarsened output")
+
+    # Permanent regression check (fixes review-phase-1-iteration-2 MAJOR
+    # finding #2): the XG/YG check above never exercised
+    # coarsen_corner_indexed_windowed_sum (DXV/DYU/RAZ), which is exactly
+    # why that code path's boundary-windowing bug (CRITICAL finding #1)
+    # went undetected. Run only on the LLC30 coarsened output -- DXV/DYU/
+    # RAZ are a coarsening-rule output, there is no equivalent "fine grid"
+    # quantity-continuity question to check (the fine .mitgrid data is
+    # exact by construction, not produced by this script's own windowing).
+    check_facet_boundary_continuity_quantity(
+        coarse_dxv, coarse_dyu, coarse_raz, label="LLC30 coarsened output"
+    )
 
     print()
     print("=" * 70)
