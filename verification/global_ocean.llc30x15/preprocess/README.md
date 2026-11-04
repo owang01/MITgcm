@@ -106,7 +106,7 @@ function per rule:
    orthogonal (x) sub-columns combined with a mean.
 5. **`coarsen_area_sum`** — `RAC`, `RAW`, `RAS` (areas): sum of the
    9 constituent fine-cell areas in each 3x3 block (not a mean).
-6. **`coarsen_corner_indexed_windowed_sum`** — `DXV`, `DYU`, `RAZ`:
+6. **`coarsen_corner_indexed_symmetric`** — `DXV`, `DYU`, `RAZ`:
    corner-INDEXED (full `(ny+1,nx+1)` extent, no padding, same shape as
    `XG`/`YG`) but are length/area **quantities**, not positions. Subsampling
    them (as an earlier version of this fix did, reasoning "same shape as
@@ -117,15 +117,45 @@ function per rule:
    "corner" (subsample) during this fix's own development caused a real
    smoke-test crash (`uvel_max` exploding from ~0.1 to >100 within 9
    timesteps, aborting in `CALC_R_STAR`) traced to `mom_vecinv`'s vorticity
-   term dividing by a `rAz` that was ~9x too small. The correct rule: the
-   shared boundary point at index 0 is copied directly (same convention as
-   `XG`/`YG`'s subsample at that one point), and each subsequent coarse
-   index sums (`DXV`: along x; `DYU`: along y; `RAZ`: along both axes) the
-   3 (or 3x3) fine values immediately following it, with any non-summed
+   term dividing by a `rAz` that was ~9x too small. The windowed-sum rule:
+   each coarse index sums (`DXV`: along x; `DYU`: along y; `RAZ`: along
+   both axes) the fine values its coarse cell spans, with any non-summed
    axis (`DXV`, `DYU` only) combined by mean. Verified: this gives `RAZ`
    the same order of magnitude as the coarse `RAC` (ratio ≈0.98 on
    tile001, expected since they are offset corner-vs-center cell areas),
    vs. ≈1/9 of that under the (wrong) subsample rule.
+
+   **Facet-seam symmetry (second, independent fix, on top of the
+   windowed-sum rule above):** a plain windowed sum, computed
+   independently per facet using only that facet's OWN one-sided
+   fine-grid neighborhood, produced boundary values that disagreed
+   between adjacent facets by up to 13% at facet-to-facet seams — this
+   was initially (incorrectly) attributed to a "geometric singularity"
+   at triple-facet-junction corners, but a decisive re-check disproved
+   that: raw fine-resolution `RAZ`/`DYU` values pulled directly from two
+   adjacent `.mitgrid` files along their shared boundary are EXACTLY
+   identical (`0.0` difference) at source resolution — there is no
+   singularity in the actual grid data anywhere. The real cause: each
+   facet's boundary coarse cell = [the shared boundary fine cell, which
+   genuinely IS identical between facets, like `XG`/`YG`'s shared
+   corner] + [that facet's OWN next-interior-neighbor fine cell, which is
+   a genuinely DIFFERENT physical cell from the other facet's — nothing
+   requires them to agree, and empirically they don't, by up to ~25% in
+   `RAZ` at the worst-case connection]. `coarsen_corner_indexed_symmetric`
+   fixes this structurally rather than tolerating the residual: for every
+   internal (connected, non-open) seam, each facet's boundary window
+   borrows one ghost cell from its neighbor's own interior data (so both
+   sides' windows cover the IDENTICAL set of physical fine cells), and
+   the handful of true multi-facet corner points — where even a
+   ghost-cell pair is still an exact tie between 2 valid-but-not-
+   bit-identical float64 summation orders — are resolved by a final
+   corner-group averaging pass (RAZ: mean of all facets sharing that
+   physical corner; DXV/DYU: pairwise mean of each connection's 2
+   endpoints). Result: every one of the 16 `facetEdgeLink` connections
+   now agrees to ~1e-15 relative (pure float64 rounding), not a 13%
+   "tolerance" — see `check_facet_boundary_continuity_quantity`'s
+   `rel_tol=1e-9`, six orders of magnitude of margin above the measured
+   noise floor and far below either previous bug class (13%–97%).
 
 ## Padding patterns (separate from the coarsening rule above)
 
@@ -204,6 +234,11 @@ correct, not merely "better than one wrong alternative." This check runs
 every time the script executes (not a one-off), so a future regression
 would be caught immediately.
 
+An analogous check, `check_facet_boundary_continuity_quantity()`, does the
+same for `DXV`/`DYU`/`RAZ` (see rule 6's "Facet-seam symmetry" writeup
+above) — **every one of the 16 connections now agrees to ~1e-15 relative**
+(float64 rounding), checked against a `rel_tol=1e-9` tolerance.
+
 ## Bathymetry coarsening
 
 Real\*4, big-endian, compact shape `(90,1170)`, confirmed via
@@ -271,6 +306,15 @@ value to average, only flux/stress magnitudes.
   `facetEdgeLink`-implied connections passed, both for the LLC90 fine
   source grid and the LLC30 coarsened output, with max residual `~1e-13`
   degrees in `XG` and `YG` at every connection — **PASSED**.
+- **Facet-boundary-continuity check, `DXV`/`DYU`/`RAZ`** (fixes the
+  facet-seam symmetry bug described under rule 6 above): all 16
+  `facetEdgeLink`-implied connections passed on the LLC30 coarsened
+  output, with max residual `5.680e-15` relative (float64 rounding,
+  tolerance `1e-9`) — **PASSED**. The previous worst-case connection
+  (`facet1.E <-> facet2.W`) independently re-verified by reading the
+  written `output/grid/tile001.mitgrid`/`tile002.mitgrid` files directly
+  off disk: `RAZ` max relative diff `2.161e-16`, `DYU` max relative diff
+  `1.609e-16`.
 - **Byte-size assertions**: every one of the 5 grid tiles, the bathymetry
   file, and the 9 forcing climatology files matched its expected size
   exactly (see per-facet table above and the `561,600`/`46,800` figures) —

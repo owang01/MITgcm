@@ -40,7 +40,7 @@ corner-subsample" split is wrong for lengths/areas):
      of 3 consecutive values along y.
   5. coarsen_area_sum      -- RAC, RAW, RAS (areas): SUM of the 9
      constituent fine-cell areas in each 3x3 block.
-  6. coarsen_corner_indexed_windowed_sum -- DXV, DYU, RAZ: these are
+  6. coarsen_corner_indexed_symmetric (DXV, DYU, RAZ) -- these are
      corner-INDEXED (full (ny+1,nx+1) extent, no padding at all, same as
      XG/YG) but are PHYSICALLY length/area quantities, not positions --
      unlike XG/YG, subsampling them is WRONG (confirmed empirically: it
@@ -48,15 +48,48 @@ corner-subsample" split is wrong for lengths/areas):
      magnitude, since RAZ needs to represent the AREA of a coarse corner
      cell, not copy one fine corner cell's area -- this caused a real
      numerical blow-up in mom_vecinv's vorticity term, 1/rAz, during this
-     fix's own smoke-test rebuild). Each coarse value (beyond the shared
-     boundary point at index 0, which is a direct copy) is the SUM (DXV:
-     along x; DYU: along y; RAZ: along both) of the 3 (or 3x3) fine values
-     immediately following it, with the ORTHOGONAL axis combined by MEAN
-     (DXV/DYU only; RAZ sums both axes) -- see
-     coarsen_corner_indexed_windowed_sum's docstring for the exact window
-     convention (it is NOT a simple reshape-into-blocks like the other
-     sum rules, because corner-indexed arrays have one extra point that
-     doesn't fit evenly into 3x3 blocks the way center/face quantities do).
+     fix's own smoke-test rebuild). Each coarse value is a windowed SUM
+     (DXV: along x; DYU: along y; RAZ: along both) of the fine values it
+     spans, with the ORTHOGONAL axis combined by MEAN (DXV/DYU only; RAZ
+     sums both axes).
+
+     IMPORTANT (fix for a second, more subtle defect found in code review
+     after the above was first implemented): at every INTERNAL facet-to-
+     facet seam, the boundary coarse cell must be computed SYMMETRICALLY
+     -- i.e. the two (or three, at a true triple junction) facets sharing
+     that physical grid point/edge must agree on its RAZ/DXV/DYU value to
+     floating-point precision, the same way XG/YG's shared corner is
+     treated as ONE value, not two (or three) independently-approximated
+     ones. An earlier version computed each facet's boundary window using
+     ONLY that facet's own one-sided fine-grid neighborhood -- which is
+     correct for a true OPEN/disconnected domain edge (there is no other
+     side to agree with), but wrong at an internal seam, where each
+     facet's own non-shared contributing fine cell is a genuinely
+     different physical cell from its neighbor's (confirmed by direct
+     inspection of the raw tile001/tile002.mitgrid data: the literal
+     shared boundary fine cell is bit-identical between facets, exactly
+     like XG/YG's shared corner, but each facet's own next-interior
+     neighbor cell is not -- differing by up to ~25% in RAZ at the
+     worst-case connection). That produced up to a 13% disagreement
+     between adjacent facets' independently-windowed RAZ/DXV/DYU -- NOT a
+     geometric "singularity" (an initial, now-disproven theory): fine
+     RAZ/DYU pulled directly from the raw .mitgrid files at the shared
+     boundary are EXACTLY identical (0.0 difference) at every one of the
+     16 connections, including the supposed "worst case"; the magnitude
+     of the disagreement tracks local cross-seam grid curvature, not
+     "how many facets meet here".
+
+     The fix (see coarsen_corner_indexed_symmetric's docstring for the
+     full mechanism): for every internal seam, each facet's boundary
+     window borrows one ghost cell from its neighbor's own interior (so
+     both facets' windows cover the IDENTICAL set of physical fine
+     cells), and the handful of true multi-facet corner points (where a
+     ghost-cell pair alone is still ambiguous -- 2 geometrically valid
+     but not bit-identical paths to the same diagonal fine cell) are
+     resolved by a final corner-group symmetrization pass. The result:
+     every one of the 16 facetEdgeLink connections agrees to ~1e-15
+     relative (pure float64 rounding, not a tolerance), see
+     check_facet_boundary_continuity_quantity.
 
 Padding/boundary handling (separate from the above rule -- see
 PADDING_CLASS): a fine-grid field's extra "+1" row/column is NOT uniformly
@@ -161,11 +194,16 @@ FIELD_RULE = {
     # caused a real numerical blow-up (uvel_max growing >100x within 9
     # timesteps, CALC_R_STAR abort) in this config's smoke-test rebuild,
     # traced to mom_vecinv's vorticity term dividing by a RAZ that was ~9x
-    # too small. Use the dedicated windowed-sum rule instead (rule 6 in
-    # the module docstring).
-    "DXV": "corner_indexed_windowed_sum",
-    "DYU": "corner_indexed_windowed_sum",
-    "RAZ": "corner_indexed_windowed_sum",
+    # too small. This entry is now purely INFORMATIONAL (rule name for the
+    # module docstring's rule-6 description) -- these 3 fields are NOT
+    # dispatched through coarsen_one_mitgrid_field/FIELD_RULE at runtime
+    # any more; they go through coarsen_corner_indexed_symmetric (called
+    # once for all 5 facets together, see process_grid), which also fixes
+    # a second, independent facet-seam-symmetry defect a windowed-sum-only
+    # version of this rule still had (see rule 6's full writeup above).
+    "DXV": "corner_indexed_symmetric",
+    "DYU": "corner_indexed_symmetric",
+    "RAZ": "corner_indexed_symmetric",
     "DXF": "xlength_sum", "DXC": "xlength_sum", "DXG": "xlength_sum",
     "DYF": "ylength_sum", "DYC": "ylength_sum", "DYG": "ylength_sum",
     "RAC": "area_sum", "RAW": "area_sum", "RAS": "area_sum",
@@ -227,6 +265,97 @@ COMPACT_NX = 90
 COMPACT_NY = 1170
 COMPACT_COARSE_NX = 30
 COMPACT_COARSE_NY = 390
+
+
+# ---------------------------------------------------------------------------
+# facetEdgeLink facet-connectivity topology (moved here, ahead of the
+# coarsening rules, because coarsen_corner_indexed_symmetric needs to walk
+# this table DURING coarsening -- it is no longer only used by the
+# after-the-fact regression check check_facet_boundary_continuity*).
+#
+# facetEdgeLink copied unchanged from the production LLC90 reference (see
+# input/data.exch2's own copy of this table) -- resolution-independent,
+# same for LLC90 and LLC30. Each facet has 4 edges (N,S,E,W per EDGE_NAME);
+# FACET_EDGE_LINK[facet][i-1] is a token like '3.4' meaning "this edge
+# connects to facet 3's edge 4 (W)", or '0.' meaning a true open/
+# disconnected domain edge (no neighbor).
+# ---------------------------------------------------------------------------
+FACET_EDGE_LINK = {
+    1: ['3.4', '0.', '2.4', '5.1'],
+    2: ['3.2', '0.', '4.2', '1.3'],
+    3: ['5.4', '2.1', '4.4', '1.1'],
+    4: ['5.2', '2.3', '0.', '3.3'],
+    5: ['1.4', '4.1', '0.', '3.1'],
+}
+EDGE_NAME = {1: 'N', 2: 'S', 3: 'E', 4: 'W'}
+_SAME_ORIENT_EDGE_PAIRS = {('N', 'S'), ('S', 'N'), ('E', 'W'), ('W', 'E')}
+_EDGE_NUM = {v: k for k, v in EDGE_NAME.items()}
+
+
+def _parse_edge_link(token):
+    """Parse a facetEdgeLink token like '3.4' -> (jj=3, ii=4); '0.' -> (0,0)."""
+    token = token.strip()
+    if token in ('0.', '0'):
+        return 0, 0
+    whole, frac = token.split('.')
+    return int(whole), int(frac)
+
+
+def _get_corner_edge_line(arr_corner, edge):
+    """arr_corner: shape (ny+1, nx+1). Return the 1-D line of corner values
+    along the given edge (N/S/E/W), ordered by increasing index."""
+    if edge == 'N':
+        return arr_corner[-1, :]
+    elif edge == 'S':
+        return arr_corner[0, :]
+    elif edge == 'E':
+        return arr_corner[:, -1]
+    elif edge == 'W':
+        return arr_corner[:, 0]
+    raise ValueError(edge)
+
+
+def _facet_neighbor(facet, edge):
+    """Look up the neighbor facet/edge across `edge` of `facet`, per
+    FACET_EDGE_LINK. Returns None for a true open/disconnected edge, else
+    (neighbor_facet, neighbor_edge, reversed) where `reversed` is True iff
+    the index order along `edge` (in `facet`'s frame) runs opposite to the
+    index order along `neighbor_edge` (in the neighbor's frame) -- the
+    same orientation-reversal condition check_facet_boundary_continuity
+    already uses for XG/YG (_SAME_ORIENT_EDGE_PAIRS)."""
+    tok = FACET_EDGE_LINK[facet][_EDGE_NUM[edge] - 1]
+    jj, ii = _parse_edge_link(tok)
+    if jj == 0:
+        return None
+    eii = EDGE_NAME[ii]
+    reversed_ = (edge, eii) not in _SAME_ORIENT_EDGE_PAIRS
+    return jj, eii, reversed_
+
+
+def _facet_corner_walk(facet, cross_edge, along_edge):
+    """Walk from `facet`'s corner (defined by the two edges `cross_edge`
+    and `along_edge` meeting there) ACROSS `cross_edge` into the neighbor,
+    and return (neighbor_facet, neighbor_cross_edge, neighbor_along_edge)
+    identifying the SAME physical corner point in the neighbor's own
+    local (edge1,edge2) frame. Returns None if `cross_edge` is open.
+
+    Used by coarsen_corner_indexed_symmetric's corner-group symmetrization
+    pass to enumerate every facet that shares a given physical corner
+    point (2 facets at most corners, 3 at a true triple junction)."""
+    res = _facet_neighbor(facet, cross_edge)
+    if res is None:
+        return None
+    nf, ne, rev = res
+    if cross_edge in ('N', 'S'):
+        facet_end = 1 if along_edge == 'E' else 0
+    else:
+        facet_end = 1 if along_edge == 'N' else 0
+    nf_end = (1 - facet_end) if rev else facet_end
+    if ne in ('N', 'S'):
+        other_edge = 'E' if nf_end == 1 else 'W'
+    else:
+        other_edge = 'N' if nf_end == 1 else 'S'
+    return nf, ne, other_edge
 
 
 # ===========================================================================
@@ -335,7 +464,7 @@ def coarsen_corner(arr, factor=FACTOR):
 
 def coarsen_xlength_sum(arr, factor=FACTOR):
     """Rule 3: x-direction length fields (DXF, DXC, DXG -- DXV uses the
-    dedicated coarsen_corner_indexed_windowed_sum rule instead, see there).
+    dedicated coarsen_corner_indexed_symmetric rule instead, see there).
 
     A coarse cell's WIDTH is the SUM (not the average) of its `factor`
     constituent fine-grid widths along x -- this is the key correction vs.
@@ -359,7 +488,7 @@ def coarsen_xlength_sum(arr, factor=FACTOR):
 
 def coarsen_ylength_sum(arr, factor=FACTOR):
     """Rule 4: y-direction length fields (DYF, DYC, DYG -- DYU uses the
-    dedicated coarsen_corner_indexed_windowed_sum rule instead, see there).
+    dedicated coarsen_corner_indexed_symmetric rule instead, see there).
 
     A coarse cell's HEIGHT is the SUM (not the average) of its `factor`
     constituent fine-grid heights along y -- mirrors coarsen_xlength_sum's
@@ -379,7 +508,7 @@ def coarsen_ylength_sum(arr, factor=FACTOR):
 def coarsen_area_sum(arr, factor=FACTOR):
     """Rule 5: SUM of the factor x factor (9, for factor=3) constituent
     fine-cell areas (RAC, RAW, RAS -- RAZ uses the dedicated
-    coarsen_corner_indexed_windowed_sum rule instead, see there) -- NOT a
+    coarsen_corner_indexed_symmetric rule instead, see there) -- NOT a
     mean. A coarse cell's area is the sum of its constituent fine-cell
     areas; using a mean would give 1/9 of the correct total area.
 
@@ -392,47 +521,67 @@ def coarsen_area_sum(arr, factor=FACTOR):
     return blocks.sum(axis=(1, 3))
 
 
-def _windowed_reduce_1d(arr_1d, how, factor=FACTOR):
-    """Helper for coarsen_corner_indexed_windowed_sum: collapse a 1-D array
-    of length (n+1) (n % factor == 0, so n+1 is NOT evenly divisible by
-    factor -- this is the key difference from reduce_1d_group, which
-    assumes even divisibility) into (n//factor + 1) values.
+def _windowed_reduce_1d(arr_1d, how, factor=FACTOR, ghost_start=None, ghost_end=None):
+    """Helper for coarsen_corner_indexed_symmetric (and its internal
+    _corner_indexed_xreduce/_corner_indexed_yreduce_raw sub-steps):
+    collapse a 1-D array of length (n+1) (n % factor == 0, so n+1 is NOT evenly
+    divisible by factor -- this is the key difference from
+    reduce_1d_group, which assumes even divisibility) into (n//factor + 1)
+    values.
 
-    FIX (critical bug found in review-phase-1 iteration 2): an earlier
-    version of this function set out[0] = arr_1d[0], a bare single-value
-    COPY borrowed from coarsen_corner's position-style (XG/YG) subsample
-    rule. That is physically wrong for a length/area QUANTITY (DXV/DYU/
-    RAZ): it silently dropped 2 of the 3 real fine cells that should have
-    contributed to the boundary coarse cell, undercounting RAZ/DXV/DYU by
-    ~3x (plain edge) to ~9x (true facet corner, where BOTH axes drop 2 of
-    3 cells) along every facet's first row/column -- confirmed by a
-    facet-boundary-continuity check (same methodology as the XG/YG check)
-    finding up to 97% disagreement between adjacent facets at every one of
-    the 16 facetEdgeLink connections for these 3 fields.
+    HISTORY: an early version of this function set out[0] = arr_1d[0], a
+    bare single-value COPY borrowed from coarsen_corner's position-style
+    (XG/YG) subsample rule -- physically wrong for a length/area QUANTITY
+    (DXV/DYU/RAZ), since it silently dropped real fine cells that should
+    have contributed to the boundary coarse cell. That was fixed (review-
+    phase-1 iteration 2) by shrinking the two BOUNDARY windows (index 0
+    and index cn) to `factor-1` fine cells each instead of a bare 1-cell
+    copy -- correct by itself, but see ghost_start/ghost_end below for a
+    SECOND, independent defect in the boundary windows that fix did not
+    address.
 
-    The correct windowing, derived from element-count conservation (every
-    fine cell must contribute to EXACTLY one coarse cell -- no double
-    counting, no silent dropping, since these are summed/averaged physical
-    quantities): arr_1d has n+1 = factor*cn+1 fine points that must map
-    onto cn+1 coarse outputs. You cannot give all cn+1 outputs a full
-    `factor`-sized window (that would need factor*(cn+1) = factor*cn+factor
-    elements, i.e. (factor-1) MORE than actually exist). The deficit of
-    (factor-1) elements is resolved by shrinking the two BOUNDARY windows
-    (index 0 and index cn) only -- interior windows keep the full
-    `factor`-sized window unchanged (this matches the shape the previous,
-    non-buggy code already used for every index 1..cn, which this fix does
-    NOT touch). For factor=3 this gives boundary windows of exactly 2 fine
-    cells each (not 1, and not 3): a legitimate "fewer than `factor`
-    cells available at this true facet edge" case (there is no fine-grid
-    neighbor beyond the edge to include), as opposed to the old bug's
-    "fewer than `factor` cells used even though `factor` were available."
+    FIX (critical finding, review-phase-1 iteration 4): the `factor-1`
+    one-sided boundary window above is only correct for a genuinely OPEN/
+    disconnected domain edge (no fine-grid neighbor exists beyond it to
+    include). At an INTERNAL facet-to-facet seam, the boundary coarse
+    cell's window was still being built from ONLY this facet's own
+    `factor-1` fine cells -- but the two facets sharing that seam each
+    have a genuinely DIFFERENT physical fine cell as their "own" non-
+    shared contribution (confirmed by direct inspection of the raw
+    tile001/tile002.mitgrid data: the literal shared boundary fine cell
+    is bit-identical between facets, exactly like XG/YG's shared corner,
+    but each facet's next-interior neighbor cell is not, differing by up
+    to ~25% in RAZ at the worst-case connection) -- so the two facets'
+    independently-windowed boundary values disagreed by up to 13%, not
+    because of any geometric "singularity", but simply because each side
+    was missing the other side's equally-valid contribution.
 
-      out[0]        = reduce(arr_1d[0 : factor-1])
+    `ghost_start`/`ghost_end` are the fix: when the boundary at index 0 or
+    index cn is an INTERNAL seam (not a true open edge), the caller passes
+    the NEIGHBOR facet's own corresponding interior fine value as
+    ghost_start/ghost_end. The boundary window then becomes the full,
+    symmetric `factor`-sized window [this facet's own `factor-1` cells] +
+    [1 ghost cell borrowed from the neighbor] -- exactly the same total
+    window size as any ordinary INTERIOR coarse cell elsewhere in the
+    grid, just straddling the seam instead of sitting fully inside one
+    facet. Both facets end up computing from the IDENTICAL combined
+    `factor`-cell window (coarsen_corner_indexed_symmetric's ghost-lookup
+    helpers ensure each side's ghost is literally the other side's own
+    contributing cell), so they agree to floating-point precision by
+    construction, not merely within some empirically-chosen tolerance
+    (true multi-facet CORNER points need one further averaging pass on
+    top of this -- see coarsen_corner_indexed_symmetric's docstring).
+    When ghost_start/ghost_end is None (a true open edge), behavior is
+    UNCHANGED from before: the one-sided `factor-1`-cell window.
+
+    General windowing (unaffected by this fix, same as before):
+
+      out[0]        = reduce(arr_1d[0 : factor-1]  [+ ghost_start])
       out[k]        = reduce(arr_1d[(factor-1)+(k-1)*factor : (factor-1)+k*factor])
-                        for k=1..cn-1   (unchanged from before: a full,
-                        non-overlapping `factor`-sized window)
-      out[cn]       = reduce(arr_1d[n-(factor-2) : n+1])   (last `factor-1`
-                        fine cells)
+                        for k=1..cn-1   (always a full, non-overlapping
+                        `factor`-sized window -- never touched by either
+                        fix, boundary-only)
+      out[cn]       = reduce(arr_1d[n-(factor-2) : n+1]  [+ ghost_end])
 
     This is the corner-indexed analogue of reduce_1d_group, needed because
     DXV/DYU/RAZ have one MORE point than a clean multiple of `factor`
@@ -447,60 +596,330 @@ def _windowed_reduce_1d(arr_1d, how, factor=FACTOR):
         return seg.sum() if how == "sum" else seg.mean()
 
     out = np.empty(cn + 1, dtype=arr_1d.dtype)
-    out[0] = _reduce(arr_1d[0:boundary_w])
+
+    seg0 = arr_1d[0:boundary_w]
+    if ghost_start is not None:
+        seg0 = np.concatenate([seg0, [ghost_start]])
+    out[0] = _reduce(seg0)
+
     pos = boundary_w
     for k in range(1, cn):
         seg = arr_1d[pos:pos + factor]
         out[k] = _reduce(seg)
         pos += factor
-    out[cn] = _reduce(arr_1d[pos:pos + boundary_w])
+
+    segN = arr_1d[pos:pos + boundary_w]
+    if ghost_end is not None:
+        segN = np.concatenate([segN, [ghost_end]])
+    out[cn] = _reduce(segN)
     pos += boundary_w
     assert pos == n + 1, (pos, n + 1, "windowed partition must exactly "
                            "cover every fine element exactly once")
     return out
 
 
-def coarsen_corner_indexed_windowed_sum(arr, own_axes, factor=FACTOR):
-    """Rule 6: DXV, DYU, RAZ -- corner-INDEXED (full (ny+1,nx+1) extent, no
-    padding, same shape convention as XG/YG) length/area QUANTITIES.
+_CORNER_INDEXED_HOW = {
+    "DXV": ("sum", "mean"),   # (how_x, how_y): sum along x (own), mean along y
+    "DYU": ("mean", "sum"),   # mean along x, sum along y (own)
+    "RAZ": ("sum", "sum"),    # sum along both axes
+}
 
-    Confirmed WRONG to subsample these like XG/YG (positions): subsampling
-    picks one fine-grid value where the coarse quantity should represent
-    the length/area spanning `factor` (or `factor`x`factor`) fine cells,
-    deflating DXV/DYU by ~factor and RAZ by ~factor^2. This was caught by
-    a real smoke-test rebuild blow-up (see FIELD_RULE's comment) -- an
-    empirical confirmation, not just a priori reasoning.
 
-    arr: shape (ny+1, nx+1), full real corner-indexed data (no padding).
-    own_axes: tuple of axes (0=y, 1=x) along which the field's own
-      physical quantity is summed:
-        DXV (x-length):  own_axes=(1,)   -- sum along x, mean along y
-        DYU (y-length):  own_axes=(0,)   -- sum along y, mean along x
-        RAZ (area):      own_axes=(0,1)  -- sum along BOTH axes
+def _corner_indexed_ghost_line(fine_by_facet, name, facet, edge, offset=1):
+    """Return the length-(perp_extent+1) line of RAW fine values `offset`
+    fine cells INWARD from `facet`'s neighbor across `edge`, aligned with
+    `facet`'s own index order along `edge` (reversed if the connection's
+    orientation flips, per _facet_neighbor's `reversed` flag -- the same
+    convention check_facet_boundary_continuity already uses for XG/YG).
 
-    Returns: shape (ny//factor + 1, nx//factor + 1), using the same
-    "shared boundary point at index 0, windowed-sum of `factor` points for
-    each subsequent index" convention as _windowed_reduce_1d on each axis
-    in turn (this is NOT a simple reshape-into-blocks like coarsen_
-    xlength_sum/coarsen_area_sum, because a corner-indexed array's extent
-    is ny+1/nx+1, one more than an even multiple of `factor`).
+    For DXV/DYU (not RAZ), the quantity read from the NEIGHBOR is
+    whichever of DXV/DYU corresponds to the NEIGHBOR's own edge
+    orientation (DXV for an N/S neighbor edge -- x-varying; DYU for E/W
+    -- y-varying), exactly the same swap
+    check_facet_boundary_continuity_quantity's `_edge_quantity` already
+    performs when comparing coarse output across a rotated connection:
+    facets 4/5 are rotated 90 degrees relative to 1/2/3 in this LLC
+    topology, so "the length along this edge" is DXV on one side and DYU
+    on the other for a rotated connection, even though it is the SAME
+    physical quantity.
+
+    Returns None for a true open/disconnected edge (no neighbor to
+    borrow a ghost cell from -- the one-sided window is correct as-is
+    there, nothing to fix).
     """
+    res = _facet_neighbor(facet, edge)
+    if res is None:
+        return None
+    jj, eii, rev = res
+    use_name = name if name == "RAZ" else ("DXV" if eii in ("N", "S") else "DYU")
+    arr = fine_by_facet[jj][use_name]
+    if eii == "N":
+        ghost = arr[-1 - offset, :]
+    elif eii == "S":
+        ghost = arr[offset, :]
+    elif eii == "E":
+        ghost = arr[:, -1 - offset]
+    else:  # 'W'
+        ghost = arr[:, offset]
+    return ghost[::-1] if rev else ghost
+
+
+def _corner_indexed_xreduce(fine_by_facet, name, facet, factor=FACTOR):
+    """X-reduce every row of `facet`'s raw (ny+1,nx+1) array for `name`,
+    using a ghost cell from the E and/or W neighbor (if connected -- see
+    _corner_indexed_ghost_line) so the boundary windows at x=0 and
+    x=nx//factor are built from the SAME physical fine cells the
+    neighbor facet's own window uses, not a one-sided subset of them.
+    Returns shape (ny+1, cnx+1).
+    """
+    how_x, _ = _CORNER_INDEXED_HOW[name]
+    arr = fine_by_facet[facet][name]
     ny_p1, nx_p1 = arr.shape
-    how_x = "sum" if 1 in own_axes else "mean"
-    how_y = "sum" if 0 in own_axes else "mean"
     nx = nx_p1 - 1
     cnx = nx // factor
-    # Step 1: reduce along x for every fine row -> shape (ny+1, cnx+1)
+    ghost_E = _corner_indexed_ghost_line(fine_by_facet, name, facet, "E")
+    ghost_W = _corner_indexed_ghost_line(fine_by_facet, name, facet, "W")
     tmp = np.empty((ny_p1, cnx + 1), dtype=arr.dtype)
     for j in range(ny_p1):
-        tmp[j, :] = _windowed_reduce_1d(arr[j, :], how_x, factor)
-    # Step 2: reduce along y for every (already x-reduced) column
+        gs = ghost_W[j] if ghost_W is not None else None
+        ge = ghost_E[j] if ghost_E is not None else None
+        tmp[j, :] = _windowed_reduce_1d(arr[j, :], how_x, factor, ghost_start=gs, ghost_end=ge)
+    return tmp
+
+
+def coarsen_corner_indexed_symmetric(fine_by_facet, factor=FACTOR):
+    """Rule 6, FIXED: coarsen DXV, DYU, RAZ for ALL 5 facets TOGETHER,
+    producing values that agree to floating-point precision at every
+    internal facet-to-facet seam -- not merely "close", the way an
+    earlier, per-facet-independent version of this rule did (see the
+    module docstring's "IMPORTANT" paragraph on rule 6 for the full
+    history/root-cause of that bug, confirmed by direct inspection of the
+    raw .mitgrid data: the shared boundary fine cell is bit-identical
+    between facets, like XG/YG's shared corner, but each facet's own
+    next-interior neighbor fine cell is a genuinely different physical
+    cell -- so two facets windowing independently from their OWN side
+    only disagreed by up to 13%, concentrated at seams and corners).
+
+    Mechanism (two stages):
+
+    1. GHOST-CELL SYMMETRIZATION (fixes the ~13% seam-interior residual
+       down to float64 rounding, ~1e-16 relative): for every internal
+       (connected, non-open) edge, each facet's boundary window borrows
+       ONE extra fine cell from its neighbor's own interior (see
+       _corner_indexed_ghost_line/_corner_indexed_xreduce) -- restoring
+       the window to the SAME `factor`-sized width every other (interior)
+       coarse cell gets, just straddling the seam instead of sitting
+       fully inside one facet. Done for BOTH reduction axes (x via
+       _corner_indexed_xreduce; y via an exactly analogous ghost-aware
+       pass over the already-x-reduced columns, using the neighbor's own
+       x-reduced row (if the neighbor's shared edge is N/S) or its
+       y-reduced column (if E/W, i.e. the connection is rotated) --
+       mirroring the DXV<->DYU swap _corner_indexed_ghost_line performs).
+
+    2. CORNER-GROUP SYMMETRIZATION (fixes the handful of true multi-facet
+       corner points left over after step 1, each an exact tie between 2
+       geometrically valid but not bit-identical float64 summation
+       orders -- confirmed by direct enumeration: after step 1, EVERY
+       non-corner boundary point already agrees to ~1e-16, and the ONLY
+       remaining residual is exactly at the 8 facet-corner-point groups,
+       ~1-3% there): walks FACET_EDGE_LINK to find every facet sharing
+       each physical corner point (2 facets at most corners, 3 at a true
+       triple junction), and for RAZ, replaces all of that group's
+       corner-point copies with their arithmetic mean (RAZ is a scalar
+       area, directly comparable across facets regardless of rotation);
+       for DXV/DYU, pairwise-averages the 2 endpoints of each of the 16
+       facetEdgeLink connections directly (using whichever of DXV/DYU is
+       physically appropriate on each side, per the same N/S->DXV,
+       E/W->DYU convention as check_facet_boundary_continuity_quantity).
+
+    fine_by_facet: dict facet(1..5) -> dict of raw fine .mitgrid fields
+    for that facet (as returned by read_mitgrid_tile) -- ALL 5 facets
+    must be passed together, since fixing one facet's boundary requires
+    reading its neighbors' raw data.
+
+    Returns dict name('DXV'/'DYU'/'RAZ') -> dict facet(1..5) -> coarse
+    (ny30+1, nx30+1) array, fully seam- and corner-symmetrized.
+    """
+    coarse = {name: {} for name in ("DXV", "DYU", "RAZ")}
+
+    for name in ("DXV", "DYU", "RAZ"):
+        how_x, how_y = _CORNER_INDEXED_HOW[name]
+        for facet in range(1, 6):
+            tmp = _corner_indexed_xreduce(fine_by_facet, name, facet, factor)
+            ny_p1, cnx_p1 = tmp.shape
+            ny = ny_p1 - 1
+            cny = ny // factor
+
+            def _ghost_xreduced_or_yreduced_line(edge):
+                """N/S ghost row for `facet`'s y-reduction: if the
+                neighbor across `edge` shares an N/S edge (same
+                orientation), use the neighbor's own x-reduced row
+                (length cnx_jj+1); if the neighbor shares an E/W edge
+                (rotated connection), use the neighbor's own y-reduced
+                COLUMN instead (length cny_jj+1) -- the y-direction
+                ghost is itself produced by reducing along y from raw
+                data with the neighbor's OWN N/S ghost (one level of
+                recursion, matching the x-reduction case's symmetry)."""
+                res = _facet_neighbor(facet, edge)
+                if res is None:
+                    return None
+                jj, eii, rev = res
+                nb_name = name if name == "RAZ" else ("DXV" if eii in ("N", "S") else "DYU")
+                if eii in ("N", "S"):
+                    tmp_jj = _corner_indexed_xreduce(fine_by_facet, nb_name, jj, factor)
+                    line = tmp_jj[-2, :] if eii == "N" else tmp_jj[1, :]
+                else:
+                    yred_jj = _corner_indexed_yreduce_raw(fine_by_facet, nb_name, jj, factor)
+                    line = yred_jj[:, -2] if eii == "E" else yred_jj[:, 1]
+                return line[::-1] if rev else line
+
+            ghost_N = _ghost_xreduced_or_yreduced_line("N")
+            ghost_S = _ghost_xreduced_or_yreduced_line("S")
+            out = np.empty((cny + 1, cnx_p1), dtype=tmp.dtype)
+            for i in range(cnx_p1):
+                gs = ghost_S[i] if ghost_S is not None else None
+                ge = ghost_N[i] if ghost_N is not None else None
+                out[:, i] = _windowed_reduce_1d(tmp[:, i], how_y, factor, ghost_start=gs, ghost_end=ge)
+            coarse[name][facet] = out
+
+    _symmetrize_corner_indexed_corners(coarse)
+    return coarse
+
+
+def _corner_indexed_yreduce_raw(fine_by_facet, name, facet, factor=FACTOR):
+    """Y-reduce every COLUMN of `facet`'s RAW (ny+1,nx+1) array for `name`
+    directly (no prior x-reduction), using a ghost cell from the N and/or
+    S neighbor (one-hop, via _corner_indexed_ghost_line) -- the
+    y-direction mirror of _corner_indexed_xreduce, needed by
+    coarsen_corner_indexed_symmetric's rotated-connection ghost lookup
+    (when a facet's N/S neighbor is itself joined via an E/W edge, the
+    ghost must come from a Y-reduction of that neighbor, not an
+    X-reduction). Returns shape (cny+1, nx+1).
+    """
+    _, how_y = _CORNER_INDEXED_HOW[name]
+    arr = fine_by_facet[facet][name]
+    ny_p1, nx_p1 = arr.shape
     ny = ny_p1 - 1
     cny = ny // factor
-    out = np.empty((cny + 1, cnx + 1), dtype=arr.dtype)
-    for i in range(cnx + 1):
-        out[:, i] = _windowed_reduce_1d(tmp[:, i], how_y, factor)
+    ghost_N = _corner_indexed_ghost_line(fine_by_facet, name, facet, "N")
+    ghost_S = _corner_indexed_ghost_line(fine_by_facet, name, facet, "S")
+    out = np.empty((cny + 1, nx_p1), dtype=arr.dtype)
+    for i in range(nx_p1):
+        gs = ghost_S[i] if ghost_S is not None else None
+        ge = ghost_N[i] if ghost_N is not None else None
+        out[:, i] = _windowed_reduce_1d(arr[:, i], how_y, factor, ghost_start=gs, ghost_end=ge)
     return out
+
+
+_CORNER_TYPES = {"NE": ("N", "E"), "NW": ("N", "W"), "SE": ("S", "E"), "SW": ("S", "W")}
+
+
+def _corner_indexed_corner_value(coarse_name_dict, facet, edge_v, edge_h):
+    """Read the single coarse corner value of `coarse_name_dict[facet]`
+    at the corner defined by (edge_v in {N,S}, edge_h in {E,W})."""
+    arr = coarse_name_dict[facet]
+    ridx = -1 if edge_v == "N" else 0
+    cidx = -1 if edge_h == "E" else 0
+    return ridx, cidx, arr[ridx, cidx]
+
+
+def _symmetrize_corner_indexed_corners(coarse):
+    """Second stage of coarsen_corner_indexed_symmetric (see its
+    docstring): after ghost-cell symmetrization, every boundary point
+    already agrees to float64 rounding EXCEPT the facet-corner points
+    themselves, each a tie between 2 geometrically valid but not
+    bit-identical summation paths. Resolve by averaging:
+
+      - RAZ: group every facet sharing a given physical corner (via a
+        union-find walk of _facet_corner_walk over all 20 facet-corners),
+        and set that whole group's copies to their arithmetic mean.
+      - DXV/DYU: average the 2 endpoints of each of the 16
+        facetEdgeLink connections directly (pairwise, using whichever of
+        DXV/DYU is physically appropriate on each side -- N/S edge uses
+        DXV, E/W edge uses DYU, same convention as
+        check_facet_boundary_continuity_quantity).
+
+    Mutates `coarse` (dict name -> dict facet -> array) in place.
+    """
+    # --- RAZ: corner-group mean ---
+    nodes = {(f, frozenset(edges)) for f in range(1, 6) for edges in _CORNER_TYPES.values()}
+    parent = {n: n for n in nodes}
+
+    def _find(x):
+        while parent[x] != x:
+            x = parent[x]
+        return x
+
+    def _union(a, b):
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for f in range(1, 6):
+        for c1, c2 in _CORNER_TYPES.values():
+            node = (f, frozenset([c1, c2]))
+            for cross, along in ((c1, c2), (c2, c1)):
+                res = _facet_corner_walk(f, cross, along)
+                if res is not None:
+                    nf, ne, other = res
+                    _union(node, (nf, frozenset([ne, other])))
+
+    groups = {}
+    for n in nodes:
+        groups.setdefault(_find(n), []).append(n)
+
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        vals = []
+        for (f, edges) in members:
+            ev = "N" if "N" in edges else "S"
+            eh = "E" if "E" in edges else "W"
+            _, _, v = _corner_indexed_corner_value(coarse["RAZ"], f, ev, eh)
+            vals.append(v)
+        mean_v = float(np.mean(vals))
+        for (f, edges) in members:
+            ev = "N" if "N" in edges else "S"
+            eh = "E" if "E" in edges else "W"
+            arr = coarse["RAZ"][f]
+            ridx = -1 if ev == "N" else 0
+            cidx = -1 if eh == "E" else 0
+            arr[ridx, cidx] = mean_v
+
+    # --- DXV/DYU: pairwise endpoint average per connection ---
+    def _edge_quantity_name(edge):
+        return "DXV" if edge in ("N", "S") else "DYU"
+
+    def _corner_positions(edge):
+        if edge == "N":
+            return [(-1, 0), (-1, -1)]
+        if edge == "S":
+            return [(0, 0), (0, -1)]
+        if edge == "E":
+            return [(0, -1), (-1, -1)]
+        return [(0, 0), (-1, 0)]  # 'W'
+
+    seen = set()
+    for j in range(1, 6):
+        for i in range(1, 5):
+            jj, ii = _parse_edge_link(FACET_EDGE_LINK[j][i - 1])
+            if jj == 0:
+                continue
+            key = frozenset([(j, i), (jj, ii)])
+            if key in seen:
+                continue
+            seen.add(key)
+            ei, eii = EDGE_NAME[i], EDGE_NAME[ii]
+            name_j, name_jj = _edge_quantity_name(ei), _edge_quantity_name(eii)
+            arr_j, arr_jj = coarse[name_j][j], coarse[name_jj][jj]
+            pos_j = _corner_positions(ei)
+            pos_jj = _corner_positions(eii)
+            if (ei, eii) not in _SAME_ORIENT_EDGE_PAIRS:
+                pos_jj = pos_jj[::-1]
+            for pj, pjj in zip(pos_j, pos_jj):
+                mean_v = 0.5 * (arr_j[pj] + arr_jj[pjj])
+                arr_j[pj] = mean_v
+                arr_jj[pjj] = mean_v
 
 
 def reduce_1d_group(arr_1d, how, factor=FACTOR):
@@ -552,6 +971,15 @@ def coarsen_one_mitgrid_field(name, arr_fine):
     """Dispatch a single named mitgrid field to its correct coarsening rule,
     AND to its correct padding-handling path (PADDING_CLASS).
 
+    NOTE: DXV/DYU/RAZ (PADDING_CLASS "corner_indexed_real") are NOT
+    handled here any more -- unlike every other field, they cannot be
+    coarsened one facet at a time: fixing the facet-seam symmetry bug
+    (see coarsen_corner_indexed_symmetric's docstring) requires reading
+    ALL 5 facets' raw fine data together, since a facet's boundary value
+    now depends on its neighbor's raw cells too. process_grid() calls
+    coarsen_corner_indexed_symmetric(fine_by_facet) once, separately, for
+    these 3 fields, after reading all 5 facets' fine_fields dicts.
+
     `arr_fine` is the FULL (ny+1, nx+1) field as read from the fine .mitgrid
     file. A previous version of this function assumed a single blanket
     pattern -- "every non-corner field's last row AND last column are
@@ -561,22 +989,14 @@ def coarsen_one_mitgrid_field(name, arr_fine):
     docstring/comment above): it silently discarded real boundary-adjacent
     grid-metric data and replaced it with zeros at facet seams.
 
-    There are 5 distinct cases, handled separately here:
+    There are 4 distinct cases handled here (a 5th, "corner_indexed_real",
+    is handled separately by coarsen_corner_indexed_symmetric -- see NOTE
+    above):
 
       "corner"       (XG, YG): the FULL (ny+1,nx+1) array is all real
           corner-POSITION data, no padding at all; subsampled directly
           (coarsen_corner) -- summing/averaging would displace the cell
           boundary.
-      "corner_indexed_real" (DXV, DYU, RAZ): also the FULL (ny+1,nx+1)
-          array, no padding, but these are length/area QUANTITIES, not
-          positions (V-point/U-point separations and the corner-cell
-          area). Subsampling them like XG/YG is WRONG -- confirmed by a
-          real numerical blow-up (mom_vecinv's 1/rAz vorticity term
-          exploding within 9 smoke-test timesteps) when an earlier
-          version of this fix classified them as plain "corner": a
-          coarse RAZ needs to represent the AREA of a coarse corner cell
-          (summing ~9 fine areas), not copy one fine corner cell's area.
-          Handled by coarsen_corner_indexed_windowed_sum (rule 6).
       "both_pad"     (XC, YC, DXF, DYF, RAC): confirmed last ROW and last
           COLUMN are both zero-padding; truncate both via [:-1,:-1] before
           applying the field's sum/mean rule, then the caller re-pads a
@@ -595,7 +1015,7 @@ def coarsen_one_mitgrid_field(name, arr_fine):
           zero-padded.
 
     Returns the FULL (ny30+1, nx30+1) coarse field, ready to write
-    directly (caller does not need to re-pad anything -- all 5 classes'
+    directly (caller does not need to re-pad anything -- all 4 classes'
     padding/real-boundary handling is done here).
     """
     rule = FIELD_RULE[name]
@@ -611,12 +1031,10 @@ def coarsen_one_mitgrid_field(name, arr_fine):
         assert rule == "corner", (name, rule)
         return coarsen_corner(arr_fine)
 
-    if pad_class == "corner_indexed_real":
-        # DXV, DYU, RAZ: full (ny+1,nx+1) array, no padding, but a
-        # length/area quantity -- windowed sum/mean, not subsample.
-        assert rule == "corner_indexed_windowed_sum", (name, rule)
-        own_axes = {"DXV": (1,), "DYU": (0,), "RAZ": (0, 1)}[name]
-        return coarsen_corner_indexed_windowed_sum(arr_fine, own_axes=own_axes)
+    assert pad_class != "corner_indexed_real", (
+        f"{name}: DXV/DYU/RAZ must go through coarsen_corner_indexed_symmetric "
+        f"(called once for all 5 facets together), not coarsen_one_mitgrid_field"
+    )
 
     def apply_rule(arr):
         if rule == "coord_lonlat":
@@ -676,22 +1094,28 @@ def process_grid():
     boundary-continuity check (check_facet_boundary_continuity), and the
     DXV/DYU/RAZ dicts feed its quantity-continuity sibling
     (check_facet_boundary_continuity_quantity), both run in main().
+
+    STRUCTURE (changed from a single per-facet loop to 2 passes): DXV/
+    DYU/RAZ can no longer be coarsened one facet at a time (see
+    coarsen_corner_indexed_symmetric's docstring) -- fixing their
+    facet-seam symmetry requires all 5 facets' raw fine data available
+    together. Pass 1 reads all 5 raw tiles and coarsens every OTHER field
+    per-facet (unchanged from before). Pass 2 calls
+    coarsen_corner_indexed_symmetric once, across all 5 facets, for DXV/
+    DYU/RAZ. Pass 3 merges both results per facet and writes the 5
+    output tiles (unchanged byte-size/content otherwise).
     """
     os.makedirs(OUT_GRID_DIR, exist_ok=True)
 
     fine_rac_total = 0.0
-    coarse_rac_total = 0.0
     fine_xg_by_facet = {}
     fine_yg_by_facet = {}
-    coarse_xg_by_facet = {}
-    coarse_yg_by_facet = {}
-    coarse_dxv_by_facet = {}
-    coarse_dyu_by_facet = {}
-    coarse_raz_by_facet = {}
+    fine_fields_by_facet = {}
+    coarse_fields_by_facet = {}
 
+    # Pass 1: read all 5 raw tiles; coarsen every field EXCEPT DXV/DYU/RAZ.
     for facet in range(1, 6):
         nx90, ny90 = LLC90_FACET_DIMS[facet]
-        nx30, ny30 = LLC30_FACET_DIMS[facet]
 
         in_path = os.path.join(GRID_SRC_DIR, f"tile{facet:03d}.mitgrid")
         observed_in = os.path.getsize(in_path)
@@ -702,12 +1126,15 @@ def process_grid():
         )
 
         fine_fields = read_mitgrid_tile(in_path, nx90, ny90)
+        fine_fields_by_facet[facet] = fine_fields
         fine_rac_total += fine_fields["RAC"][:-1, :-1].sum()
         fine_xg_by_facet[facet] = fine_fields["XG"]
         fine_yg_by_facet[facet] = fine_fields["YG"]
 
         coarse_fields = {}
         for name in FIELD_NAMES:
+            if name in ("DXV", "DYU", "RAZ"):
+                continue  # handled in pass 2, across all 5 facets together
             # coarsen_one_mitgrid_field now returns the FULL (ny30+1,nx30+1)
             # shape directly for every field, with the correct one of 4
             # padding/real-boundary treatments already applied internally
@@ -718,13 +1145,30 @@ def process_grid():
             # applied to all non-corner fields, which silently zeroed out
             # real boundary data for 6 of the 14 non-corner fields).
             coarse_fields[name] = coarsen_one_mitgrid_field(name, fine_fields[name])
+        coarse_fields_by_facet[facet] = coarse_fields
+
+    # Pass 2: DXV/DYU/RAZ, symmetrized across all 5 facets together (fixes
+    # the facet-seam symmetry bug -- see coarsen_corner_indexed_symmetric).
+    coarse_quantity = coarsen_corner_indexed_symmetric(fine_fields_by_facet)
+    coarse_dxv_by_facet = coarse_quantity["DXV"]
+    coarse_dyu_by_facet = coarse_quantity["DYU"]
+    coarse_raz_by_facet = coarse_quantity["RAZ"]
+
+    # Pass 3: merge + write.
+    coarse_rac_total = 0.0
+    coarse_xg_by_facet = {}
+    coarse_yg_by_facet = {}
+    for facet in range(1, 6):
+        nx90, ny90 = LLC90_FACET_DIMS[facet]
+        nx30, ny30 = LLC30_FACET_DIMS[facet]
+        coarse_fields = coarse_fields_by_facet[facet]
+        coarse_fields["DXV"] = coarse_dxv_by_facet[facet]
+        coarse_fields["DYU"] = coarse_dyu_by_facet[facet]
+        coarse_fields["RAZ"] = coarse_raz_by_facet[facet]
 
         coarse_rac_total += coarse_fields["RAC"][:-1, :-1].sum()
         coarse_xg_by_facet[facet] = coarse_fields["XG"]
         coarse_yg_by_facet[facet] = coarse_fields["YG"]
-        coarse_dxv_by_facet[facet] = coarse_fields["DXV"]
-        coarse_dyu_by_facet[facet] = coarse_fields["DYU"]
-        coarse_raz_by_facet[facet] = coarse_fields["RAZ"]
 
         out_path = os.path.join(OUT_GRID_DIR, f"tile{facet:03d}.mitgrid")
         expected_out = EXPECTED_LLC30_TILE_BYTES[facet]
@@ -845,54 +1289,13 @@ def assemble_facets_into_compact(facets_coarse):
 
 
 # ---------------------------------------------------------------------------
-# Permanent, non-tautological facet-orientation regression check (fix for
-# code-review findings #1/#4/#5): the plan's only prior checks (RAC-
-# conservation, forcing spot-check) are invariant to facet orientation/
-# permutation -- a wrong facet-4/5 reshape still conserves RAC and the
-# domain mean. This check is NOT invariant to orientation: it directly
-# compares grid-corner (XG/YG) values across every facetEdgeLink-implied
-# connection. XG/YG are exact (not block-averaged/interpolated) corner
-# positions, so two facets that are genuinely adjacent per facetEdgeLink
-# MUST share identical corner coordinates along their common edge -- any
-# orientation bug (wrong transpose, reversed index order, wrong facet
-# pairing) breaks this exactly, not approximately.
-#
-# facetEdgeLink copied unchanged from the production LLC90 reference (see
-# input/data.exch2's own copy of this table) -- resolution-independent,
-# same for LLC90 and LLC30.
+# facetEdgeLink-derived topology helpers now live near the top of the file
+# (see FACET_EDGE_LINK/EDGE_NAME/_SAME_ORIENT_EDGE_PAIRS/_parse_edge_link/
+# _get_corner_edge_line, defined right after FACET_ROW_RANGES below) --
+# moved there because coarsen_corner_indexed_symmetric (the fix for the
+# facet-seam RAZ/DXV/DYU symmetry bug) needs to walk facet connectivity
+# DURING coarsening itself, not just afterward in a regression check.
 # ---------------------------------------------------------------------------
-FACET_EDGE_LINK = {
-    1: ['3.4', '0.', '2.4', '5.1'],
-    2: ['3.2', '0.', '4.2', '1.3'],
-    3: ['5.4', '2.1', '4.4', '1.1'],
-    4: ['5.2', '2.3', '0.', '3.3'],
-    5: ['1.4', '4.1', '0.', '3.1'],
-}
-EDGE_NAME = {1: 'N', 2: 'S', 3: 'E', 4: 'W'}
-_SAME_ORIENT_EDGE_PAIRS = {('N', 'S'), ('S', 'N'), ('E', 'W'), ('W', 'E')}
-
-
-def _parse_edge_link(token):
-    """Parse a facetEdgeLink token like '3.4' -> (jj=3, ii=4); '0.' -> (0,0)."""
-    token = token.strip()
-    if token in ('0.', '0'):
-        return 0, 0
-    whole, frac = token.split('.')
-    return int(whole), int(frac)
-
-
-def _get_corner_edge_line(arr_corner, edge):
-    """arr_corner: shape (ny+1, nx+1). Return the 1-D line of corner values
-    along the given edge (N/S/E/W), ordered by increasing index."""
-    if edge == 'N':
-        return arr_corner[-1, :]
-    elif edge == 'S':
-        return arr_corner[0, :]
-    elif edge == 'E':
-        return arr_corner[:, -1]
-    elif edge == 'W':
-        return arr_corner[:, 0]
-    raise ValueError(edge)
 
 
 def _angular_diff_deg(a, b):
@@ -957,13 +1360,15 @@ def check_facet_boundary_continuity(xg_by_facet, yg_by_facet, label, tol_deg=1e-
 
 def check_facet_boundary_continuity_quantity(dxv_by_facet, dyu_by_facet,
                                               raz_by_facet, label,
-                                              rel_tol=0.15):
+                                              rel_tol=1e-9):
     """Extends check_facet_boundary_continuity to DXV/DYU/RAZ (fix for MAJOR
     finding #2, review-phase-1 iteration 2): the XG/YG check above only
     validates POSITION continuity -- it never exercised the
-    coarsen_corner_indexed_windowed_sum code path at all, which is exactly
-    why the _windowed_reduce_1d boundary-copy bug (CRITICAL finding #1)
-    went undetected. This function performs the analogous check for the
+    coarsen_corner_indexed_symmetric code path at all, which is exactly
+    why the _windowed_reduce_1d boundary-copy bug (CRITICAL finding #1,
+    review-phase-1 iteration 2) and the later facet-seam-symmetry bug
+    (CRITICAL finding, review-phase-1 iteration 4) went undetected for as
+    long as they did. This function performs the analogous check for the
     three corner-indexed QUANTITIES.
 
     Unlike XG/YG (exact positions, compared directly), DXV/DYU are
@@ -980,27 +1385,37 @@ def check_facet_boundary_continuity_quantity(dxv_by_facet, dyu_by_facet,
     scalar area) needs no such swap -- it is compared directly on both
     sides, like XG/YG.
 
-    Tolerance is a RELATIVE tolerance (rel_tol), not the tiny absolute
-    tol_deg used for XG/YG, and is deliberately looser than the 1e-6 used
-    for RAC conservation: unlike RAC (a single domain-wide sum, order-
-    invariant), DXV/DYU/RAZ's windowed-sum boundary cells are each
-    reconstructed independently by EACH side's own facet from its own
-    fine-grid neighborhood, and the two sides' windows are NOT identical
-    sets of fine cells (facet j's boundary window draws from facet j's
-    interior; facet jj's from facet jj's interior) -- they only need to
-    represent the same shared PHYSICAL corner-indexed quantity closely, a
-    genuinely harder equality than XG/YG's exact shared-point copy.
-    Empirically (measured after fixing _windowed_reduce_1d, see the
-    progress log for concrete numbers): residual disagreement is
-    concentrated exactly at the LLC topology's triple-facet-junction
-    points (where 3 facets meet at a single grid corner -- a true
-    geometric singularity for a quantity windowed independently per
-    facet) and decays to float64 rounding noise (~1e-16) within ~20 grid
-    points of that corner. rel_tol=0.15 is set just above the measured
-    worst triple-junction residual (~0.13) -- tight enough to catch a
-    real regression of the bug class this check exists for (whose
-    disagreement was ~0.77-0.97, 5-7x larger), loose enough not to flag
-    the inherent triple-junction effect as a false failure.
+    TOLERANCE HISTORY (why this is now 1e-9, not 0.15): the previous
+    rel_tol=0.15 was reverse-engineered from a buggy run's own output
+    (set "just above the measured worst-case residual") rather than any
+    principled physical bound, and was justified by a "genuine triple-
+    facet-junction geometric singularity" explanation that a later,
+    decisive re-check DISPROVED: pulling raw fine-resolution RAZ/DYU
+    values directly from two adjacent .mitgrid files along their shared
+    boundary showed them EXACTLY IDENTICAL (0.0 difference) at source
+    resolution -- there is no singularity in the actual grid data. The
+    13% mismatch was purely an artifact of each facet independently
+    windowing its own one-sided fine-grid neighborhood at a seam, instead
+    of the two (or three) sharing facets agreeing on a SINGLE shared
+    value the way XG/YG's shared corner always has. That is now fixed
+    structurally (see coarsen_corner_indexed_symmetric): every internal
+    seam's boundary coarse cell is computed from a window explicitly
+    shared between the connected facets (ghost-cell exchange for
+    interior-of-edge points, corner-group averaging for the true
+    multi-facet corner points), so DXV/DYU/RAZ now agree between facets
+    for the SAME reason XG/YG do -- not merely "closely", to float64
+    rounding. Empirically (measured after this fix, see the progress log
+    for the full 16-connection table): worst-case residual across all 16
+    facetEdgeLink connections is ~1e-15 relative (pure float64 summation-
+    order noise -- RAZ/DXV/DYU are built from many additions/means in a
+    different ORDER on each side even when they cover the exact same
+    physical fine cells, so an EXACT 0.0 is not expected, unlike XG/YG
+    which are a single subsampled value with no arithmetic at all).
+    rel_tol=1e-9 is set comfortably above that float64-noise floor (6
+    orders of magnitude of margin) and comfortably below any real
+    regression of either previous bug class (13%-97% relative) -- a
+    principled bound tied to actual floating-point precision, not a
+    tolerance that legitimizes a real residual.
 
     Returns the worst relative difference found across RAZ/DXV-or-DYU.
     Raises AssertionError if any connection exceeds rel_tol.
@@ -1042,9 +1457,9 @@ def check_facet_boundary_continuity_quantity(dxv_by_facet, dyu_by_facet,
     assert worst_rel < rel_tol, (
         f"DXV/DYU/RAZ boundary-continuity check FAILED ({label}): "
         f"worst_rel_diff={worst_rel:.3e} (tol={rel_tol:.1e}) -- this indicates "
-        f"a boundary-windowing bug in _windowed_reduce_1d / "
-        f"coarsen_corner_indexed_windowed_sum (the exact bug class this "
-        f"check exists to catch)"
+        f"a boundary-windowing or facet-seam-symmetry bug in "
+        f"_windowed_reduce_1d / coarsen_corner_indexed_symmetric (the "
+        f"exact bug classes this check exists to catch)"
     )
     print(f"  PASSED ({label}): all {n_checked} facet connections agree on "
           f"DXV/DYU/RAZ to within {rel_tol:.1e} relative tolerance.")
@@ -1376,13 +1791,16 @@ def main():
     check_facet_boundary_continuity(coarse_xg, coarse_yg, label="LLC30 coarsened output")
 
     # Permanent regression check (fixes review-phase-1-iteration-2 MAJOR
-    # finding #2): the XG/YG check above never exercised
-    # coarsen_corner_indexed_windowed_sum (DXV/DYU/RAZ), which is exactly
-    # why that code path's boundary-windowing bug (CRITICAL finding #1)
-    # went undetected. Run only on the LLC30 coarsened output -- DXV/DYU/
-    # RAZ are a coarsening-rule output, there is no equivalent "fine grid"
-    # quantity-continuity question to check (the fine .mitgrid data is
-    # exact by construction, not produced by this script's own windowing).
+    # finding #2, and now also guards the later facet-seam-symmetry fix):
+    # the XG/YG check above never exercised coarsen_corner_indexed_
+    # symmetric (DXV/DYU/RAZ) at all, which is exactly why that code
+    # path's boundary-windowing bug (CRITICAL finding, iteration 2) and
+    # facet-seam-symmetry bug (CRITICAL finding, iteration 4) both went
+    # undetected for as long as they did. Run only on the LLC30 coarsened
+    # output -- DXV/DYU/RAZ are a coarsening-rule output, there is no
+    # equivalent "fine grid" quantity-continuity question to check (the
+    # fine .mitgrid data is exact by construction, not produced by this
+    # script's own windowing).
     check_facet_boundary_continuity_quantity(
         coarse_dxv, coarse_dyu, coarse_raz, label="LLC30 coarsened output"
     )
