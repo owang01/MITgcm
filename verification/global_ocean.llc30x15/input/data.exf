@@ -28,6 +28,12 @@
 #   escape hatch ("If you think these values are OK then set
 #   useExfCheckRange=.FALSE."); using it here rather than hand-tuning
 #   the coarsened forcing to pass an arbitrary sanity threshold.
+#   NOTE: this flag is global -- it also suppresses exf_check_range.F's
+#   ustress/vstress range checks, not just hflux/precip, which removes an
+#   independent signal that could otherwise catch a future unit/sign error
+#   in wind-stress coarsening. There is no narrower per-field escape hatch
+#   in pkg/exf, so this is an accepted trade-off (see README.md's Non-Goals
+#   section), not an oversight.
  useExfCheckRange   = .FALSE.,
 #-- useAtmWind defaults to FALSE because code/EXF_OPTIONS.h #undefs
 #   ALLOW_ATM_WIND (required since this file sets ustressfile/

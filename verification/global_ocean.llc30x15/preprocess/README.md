@@ -75,12 +75,17 @@ duplicate of the last real row/column (confirmed empirically on
 all zeros). The coarsening code reproduces this exact zero-padding
 convention when writing the LLC30 tiles.
 
-## The five coarsening rules
+## The six coarsening rules (and five padding patterns)
 
 An earlier draft of this preprocessing used a simple "center-mean vs.
 corner-subsample" split, which is **wrong** for lengths and areas (it
-silently produces 1/3-scale lengths and 1/9-scale areas). The actual rule
-set, one independently-implemented function per rule:
+silently produces 1/3-scale lengths and 1/9-scale areas). A second-generation
+fix correctly separated lengths/areas by sum vs. mean, but still
+mis-classified `DXV`/`DYU`/`RAZ` as plain corner-position fields
+(subsampled like `XG`/`YG`) — this is ALSO wrong, and was caught by a real
+numerical blow-up (see "Corner-indexed length/area fields" below). The
+actual, verified-correct rule set has 6 rules, one independently-implemented
+function per rule:
 
 1. **`coarsen_coord_lonlat`** — `XC`, `YC` (cell-center lon/lat): block-mean
    of each 3x3 block. `YC` uses a plain arithmetic mean; `XC` uses
@@ -88,19 +93,64 @@ set, one independently-implemented function per rule:
    confirmed necessary because facet 4's data has 3x3 blocks straddling the
    +/-180 deg dateline, where a naive mean would give ~20 deg instead of the
    correct ~180 deg.
-2. **`coarsen_corner`** — `XG`, `YG` (cell-corner lon/lat): subsample every
-   3rd corner point directly, no averaging (coarse-cell corners coincide
-   with a subset of fine-grid corners; averaging would displace the cell
-   boundary).
-3. **`coarsen_xlength_sum`** — `DXF`, `DXV`, `DXC`, `DXG` (x-direction
+2. **`coarsen_corner`** — `XG`, `YG` (cell-corner lon/lat, POSITIONS): subsample
+   every 3rd corner point directly, no averaging (coarse-cell corners
+   coincide with a subset of fine-grid corners; averaging would displace
+   the cell boundary).
+3. **`coarsen_xlength_sum`** — `DXF`, `DXC`, `DXG` (x-direction
    lengths): sum of 3 consecutive fine values along x (a coarse cell's
    width is the sum, not the average, of its 3 constituent fine widths);
    the orthogonal (y) sub-rows are then combined with a mean.
-4. **`coarsen_ylength_sum`** — `DYF`, `DYU`, `DYC`, `DYG` (y-direction
+4. **`coarsen_ylength_sum`** — `DYF`, `DYC`, `DYG` (y-direction
    lengths): sum of 3 consecutive fine values along y, mirroring rule 3;
    orthogonal (x) sub-columns combined with a mean.
-5. **`coarsen_area_sum`** — `RAC`, `RAZ`, `RAW`, `RAS` (areas): sum of the
+5. **`coarsen_area_sum`** — `RAC`, `RAW`, `RAS` (areas): sum of the
    9 constituent fine-cell areas in each 3x3 block (not a mean).
+6. **`coarsen_corner_indexed_windowed_sum`** — `DXV`, `DYU`, `RAZ`:
+   corner-INDEXED (full `(ny+1,nx+1)` extent, no padding, same shape as
+   `XG`/`YG`) but are length/area **quantities**, not positions. Subsampling
+   them (as an earlier version of this fix did, reasoning "same shape as
+   `XG`/`YG` so same rule") is WRONG: it picks one fine value where the
+   coarse value should represent the sum of the ~3 (or ~9, for `RAZ`) fine
+   values it spans, deflating `DXV`/`DYU` by ~3x and `RAZ` by ~9x. This was
+   caught empirically, not just reasoned about: classifying `RAZ` as
+   "corner" (subsample) during this fix's own development caused a real
+   smoke-test crash (`uvel_max` exploding from ~0.1 to >100 within 9
+   timesteps, aborting in `CALC_R_STAR`) traced to `mom_vecinv`'s vorticity
+   term dividing by a `rAz` that was ~9x too small. The correct rule: the
+   shared boundary point at index 0 is copied directly (same convention as
+   `XG`/`YG`'s subsample at that one point), and each subsequent coarse
+   index sums (`DXV`: along x; `DYU`: along y; `RAZ`: along both axes) the
+   3 (or 3x3) fine values immediately following it, with any non-summed
+   axis (`DXV`, `DYU` only) combined by mean. Verified: this gives `RAZ`
+   the same order of magnitude as the coarse `RAC` (ratio ≈0.98 on
+   tile001, expected since they are offset corner-vs-center cell areas),
+   vs. ≈1/9 of that under the (wrong) subsample rule.
+
+## Padding patterns (separate from the coarsening rule above)
+
+A SECOND, independent classification determines which of a field's extra
+"+1" row/column (beyond the true `(ny,nx)` cell-quantity extent) is
+zero-padding vs. real data. An earlier version of this script assumed a
+single blanket pattern — every non-`XG`/`YG` field's extra row AND column
+are zero-padding — which is empirically false for 9 of the 14 remaining
+fields (confirmed by direct inspection of `tile001.mitgrid`: compare each
+field's last-row/last-column mean magnitude against its interior mean
+magnitude). The correct classification has 5 patterns:
+
+- **`both_pad`** — `XC`, `YC`, `DXF`, `DYF`, `RAC`: last ROW **and** last
+  COLUMN are zero-padding.
+- **`y_pad_x_real`** — `DXC`, `DYG`, `RAW`: only the last ROW is
+  zero-padding; the last COLUMN holds real, non-zero boundary data of the
+  same magnitude as the interior and is coarsened (reduced along its
+  remaining fine axis), not discarded.
+- **`x_pad_y_real`** — `DYC`, `DXG`, `RAS`: mirror of the above — only the
+  last COLUMN is zero-padding, the last ROW is real.
+- **`corner`** — `XG`, `YG`: neither row nor column is padding — both are
+  real corner-position data over the full extent, subsampled (rule 2).
+- **`corner_indexed_real`** — `DXV`, `DYU`, `RAZ`: also neither row nor
+  column is padding (full real extent, like `XG`/`YG`), but handled by the
+  windowed-sum rule (rule 6), not subsampling.
 
 ## Compact-grid `(90,1170)` facet layout — IMPORTANT CORRECTION
 
@@ -133,6 +183,27 @@ to its own native `(ny,nx)`, not to `(r1-r0, 90)`.
 `coarsen_llc90_to_llc30.py` implement this corrected convention, with the
 reasoning and empirical check documented in their docstrings/comments.
 
+### Decisive orientation verification (resolves a real reviewer disagreement)
+
+The checks above (RAC conservation, per-facet forcing spot-check) are all
+invariant to within-facet reordering/transpose — a wrong facet-4/5 reshape
+would still pass them. The actual decisive test,
+`check_facet_boundary_continuity()`, directly compares `XG`/`YG`
+corner-point values across every `facetEdgeLink`-implied facet-to-facet
+connection (16 connections total across the 5 facets, using the
+edge-connectivity convention from `pkg/exch2/w2_set_f2f_index.F`): two
+genuinely adjacent facets must share *identical* corner coordinates along
+their common edge, to within floating-point rounding, since `XG`/`YG` are
+exact (subsampled, not averaged) positions — any orientation bug (wrong
+transpose, reversed index order, wrong facet pairing) breaks this exactly,
+not approximately. Run on both the LLC90 fine source grid and the LLC30
+coarsened output, **every one of the 16 connections passed with max
+residual ~1e-13 degrees** (pure floating-point rounding noise) in both
+cases — decisively confirming the facet-4/5 orientation described above is
+correct, not merely "better than one wrong alternative." This check runs
+every time the script executes (not a one-off), so a future regression
+would be caught immediately.
+
 ## Bathymetry coarsening
 
 Real\*4, big-endian, compact shape `(90,1170)`, confirmed via
@@ -145,7 +216,13 @@ Coarsening rule: 3x3 block **minimum depth magnitude over wet cells only**
 (safest/most conservative) of the wet constituent cells, preserving its
 sign. A coarse cell is land (`0.0`) only if **all 9** constituent cells are
 land. Output shape `(30,390)`, size `30*390*4 = 46,800` bytes (verified on
-write).
+write). Two correctness checks run on every execution
+(`verify_bathy_correctness()`): (1) land-fraction-preserved — the coarse
+land fraction must be <= the fine land fraction (coarsening can only turn
+land into ocean, never the reverse) and not implausibly far below it; (2)
+depth-bounds-preserved — every coarse wet depth must fall within the fine
+field's `[min,max]` range, since min-magnitude-over-wet-cells selection
+cannot manufacture a depth outside the source range.
 
 ## Forcing reduction
 
@@ -183,20 +260,34 @@ value to average, only flux/stress magnitudes.
 
 ## Mandatory verification results (this run)
 
-- **RAC conservation** (the only check capable of catching a mean-vs-sum
-  area bug): fine-grid global `RAC` total = `5.099044e+14 m^2`; coarse-grid
-  global `RAC` total = `5.099044e+14 m^2`; relative difference = `0.0`
-  (bit-identical in this run); ratio to Earth's surface area (5.1e14 m^2)
-  = `0.9998` — **PASSED**.
+- **RAC conservation** (catches a mean-vs-sum area bug, but is
+  orientation-invariant — see the boundary-continuity check below for the
+  orientation-sensitive verification): fine-grid global `RAC` total =
+  `5.099044e+14 m^2`; coarse-grid global `RAC` total = `5.099044e+14 m^2`;
+  relative difference = `0.0` (bit-identical in this run); ratio to Earth's
+  surface area (5.1e14 m^2) = `0.9998` — **PASSED**.
+- **Facet-boundary-continuity check** (decisive, orientation-sensitive —
+  see the "Decisive orientation verification" section above): all 16
+  `facetEdgeLink`-implied connections passed, both for the LLC90 fine
+  source grid and the LLC30 coarsened output, with max residual `~1e-13`
+  degrees in `XG` and `YG` at every connection — **PASSED**.
 - **Byte-size assertions**: every one of the 5 grid tiles, the bathymetry
   file, and the 9 forcing climatology files matched its expected size
   exactly (see per-facet table above and the `561,600`/`46,800` figures) —
   **PASSED**.
-- **Spot-check** (`dlw`, January domain mean): LLC90 source January mean =
-  `280.408534`; LLC30 coarsened January mean = `280.408534`; relative
-  difference = `0.0` — **PASSED** (well within the "a few percent"
-  tolerance; exact agreement here is expected since a pure block-mean
-  commutes exactly with a prior temporal mean for this reduction order).
+- **Bathymetry correctness** (land-fraction-preserved and
+  depth-bounds-preserved): fine land fraction `0.4079`, coarse land
+  fraction `0.3644` (coarse <= fine, as expected); fine wet-depth range
+  `[-5997.99, -19.99]` m, coarse wet-depth range `[-5959.98, -19.99]` m
+  (within the fine range, as expected) — **PASSED**.
+- **Spot-check** (`dlw`, January mean, PER FACET): all 5 facets passed with
+  relative difference at machine-precision level (worst `1.873e-16`) —
+  **PASSED** (well within the "a few percent" tolerance; exact agreement
+  here is expected since a pure block-mean commutes exactly with a prior
+  temporal mean for this reduction order). Note this check is per-facet
+  but still mean-based, so it verifies arithmetic + facet identity, not
+  within-facet orientation — see the boundary-continuity check above for
+  that.
 
 ## Output
 

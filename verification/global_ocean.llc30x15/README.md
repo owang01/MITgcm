@@ -93,6 +93,28 @@ Comments
   laptop-friendly choice, not a tuned decomposition; revisit if genuine
   multi-process `pkg/exch2` exchange testing becomes a goal.
 
+Build gotchas
+-------------
+
+Three runtime namelist/CPP-option requirements were discovered the hard way
+while first bringing this config up (each caused a hard `ABNORMAL END` on an
+otherwise-clean build) -- follow this list if you ever rebuild from scratch
+and hit a similar stop, same style as the exf/precip-scaling gotcha above:
+
+* `input/data.ggl90`'s `GGL90TKEmin` must be `> 0` (set to `1.E-11` here,
+  the package's own coded default) -- `pkg/ggl90/ggl90_readparms.F` hard-STOPs
+  (`ABNORMAL END: S/R GGL90_READPARMS`) if `GGL90TKEmin<=0`.
+* `implicitViscosity=.TRUE.` is required in `input/data`'s `PARM01` whenever
+  `useGGL90=.TRUE.` -- `pkg/ggl90/ggl90_check.F` hard-STOPs
+  (`ABNORMAL END: S/R GGL90_CHECK`) otherwise.
+* `code/CPP_OPTIONS.h` must `#define NONLIN_FRSURF` whenever `input/data`
+  sets `nonlinFreeSurf`/`select_rStar` (both set here) -- without it, this
+  config silently inherits `model/inc/CPP_OPTIONS.h`'s `#undef NONLIN_FRSURF`
+  default, and `model/src/config_check.F` hard-STOPs
+  (`ABNORMAL END: S/R CONFIG_CHECK`). This one requires a full
+  `genmake2`/`make depend`/`make` rebuild, not just a namelist edit, since
+  it's a compile-time flag.
+
 Data provenance and coarsening method
 --------------------------------------
 
@@ -112,22 +134,32 @@ preprocessing scripts):
 
 Coarsening is 3:1 per linear dimension (LLC90 -> LLC30), applying three
 distinct, field-appropriate rules: (1) the grid's 16 `.mitgrid` fields are
-each coarsened by one of 5 physically-motivated rules depending on field
+each coarsened by one of 6 physically-motivated rules depending on field
 type -- coordinate fields block-mean (with a dateline-safe circular mean for
-longitude), corner fields subsample every 3rd point, x/y-length fields sum
-3 consecutive fine values along their axis, and area fields sum the 9
-constituent fine-cell areas -- never a plain block-mean for lengths/areas,
-which would silently produce 1/3-scale lengths and 1/9-scale areas; (2)
-bathymetry is coarsened by 3x3-block minimum depth magnitude over wet
-cells only (a coarse cell is land only if all 9 constituents are land),
-the most conservative choice that avoids manufacturing dry-side artifacts;
-(3) forcing is reduced in two stages -- first a 1992 monthly climatology
-(arithmetic mean per calendar month, 8784 hourly records -> 12 monthly
-records), then a 3x3 spatial block-mean of each monthly field. The mandatory
-RAC-conservation check (coarse-grid vs. fine-grid global cell-area sum)
-passed with a relative difference of 0.0 in the run that produced this
-config's `preprocess/output/`; see `preprocess/README.md` for that and all
-other verification results in full.
+longitude), corner-position fields (`XG`,`YG`) subsample every 3rd point,
+x/y-length fields sum 3 consecutive fine values along their axis (with the
+orthogonal axis mean-combined), area fields sum the 9 constituent fine-cell
+areas, and corner-INDEXED length/area fields (`DXV`,`DYU`,`RAZ` -- full
+extent, no padding, like `XG`/`YG`, but a length/area quantity rather than a
+position) use a dedicated windowed-sum rule rather than the corner-position
+subsample rule, which would deflate them by ~factor-squared -- never a plain
+block-mean for lengths/areas, which would silently produce 1/3-scale lengths
+and 1/9-scale areas; (2) bathymetry is coarsened by 3x3-block minimum depth
+magnitude over wet cells only (a coarse cell is land only if all 9
+constituents are land), the most conservative choice that avoids
+manufacturing dry-side artifacts, with a land-fraction-preserved and
+depth-bounds-preserved check run on every execution; (3) forcing is reduced
+in two stages -- first a 1992 monthly climatology (arithmetic mean per
+calendar month, 8784 hourly records -> 12 monthly records), then a 3x3
+spatial block-mean of each monthly field. The mandatory RAC-conservation
+check (coarse-grid vs. fine-grid global cell-area sum) passed with a
+relative difference of 0.0, and a decisive, non-permutation-invariant
+facet-boundary-continuity check (comparing `XG`/`YG` corner values across
+every `facetEdgeLink`-implied facet connection) passed with residuals at
+floating-point-rounding level (~1e-13 degrees) at all 16 connections, in
+the run that produced this config's `preprocess/output/`; see
+`preprocess/README.md` for that and all other verification results in
+full.
 
 Non-Goals / known limitations
 ------------------------------
@@ -148,7 +180,21 @@ claims:
     coarsened forcing produces some out-of-range values (e.g. `hflux` up to
     ~2300 W/m^2 against `pkg/exf`'s hardcoded 1600 W/m^2 sanity cap) that are
     a direct, expected consequence of monthly-mean + naive 3x3 block-average
-    coarsening, not a sign of a correct, validated flux field.
+    coarsening, not a sign of a correct, validated flux field. Note this
+    flag also globally suppresses `ustress`/`vstress` range checks, which
+    could otherwise independently catch a future unit/sign error in wind-
+    stress coarsening -- there is no narrower escape hatch in `pkg/exf` to
+    disable only the `hflux` check, so this is an accepted trade-off, not
+    an oversight.
+  - A concrete, observed consequence of the above (not just an abstract
+    risk): `results/output.txt` shows `dynstat_theta_max` rising from
+    `20.0` to `23.58` degC over the 10-step smoke test -- a warming rate
+    of roughly `0.36` degC/day, plausibly tied to the `hflux` outliers
+    this `useExfCheckRange=.FALSE.` setting permits through. This has not
+    been root-caused further (per this config's Non-Goals); a future
+    reader extending the integration length should expect this trend to
+    continue unless the forcing-coarsening or the range-check escape
+    hatch is revisited.
   - The `ustr`/`vstr` wind-stress vector components are coarsened by naive
     per-component block-averaging, without rotating to a common reference
     frame first, even though facets 4/5 and the Arctic cap are rotated
