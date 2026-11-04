@@ -1,0 +1,18 @@
+# Example "eedata" file
+# Lines beginning "#" are comments
+#  nTx      :: No. threads per process in X
+#  nTy      :: No. threads per process in Y
+# debugMode :: print debug msg (sequence of S/R calls)
+ &EEPARMS
+#-- LLC30: useCubedSphereExchange is read by pkg/exch2 itself (not just
+#   true cubed-sphere grids) to select vector component/sign rotation
+#   across facet seams on cube-like topologies, which the LLC facet
+#   layout has (confirmed: 42 files under pkg/exch2/*.F branch on this
+#   flag). The production LLC90 reference eedata
+#   (.../v4r6/input.V4r6.102/eedata) sets this .TRUE. too -- NOT .FALSE.
+ useCubedSphereExchange=.TRUE.,
+ nTx=1,
+ nTy=1,
+ &
+# Note: Some systems use & as the namelist terminator (as shown here).
+#       Other systems use a / character.

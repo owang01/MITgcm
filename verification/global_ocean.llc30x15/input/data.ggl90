@@ -1,0 +1,26 @@
+# =====================================================================
+# | Parameters for Gaspar et al. (1990)'s TKE vertical mixing scheme  |
+# =====================================================================
+#-- LLC30 lightweight verification config (Task 4 deviation, not in the
+#   plan's original file list): required because useGGL90=.TRUE. in
+#   data.pkg makes GGL90_READPARMS call OPEN_COPY_DATA_FILE('data.ggl90',
+#   ...), which hard-STOPs ('ABNORMAL END: S/R OPEN_COPY_DATA_FILE') if
+#   this file is missing -- confirmed by reading
+#   eesupp/src/open_copy_data_file.F. useIDEMIX is left at its default
+#   (.FALSE.) so GGL90_PARM02 (IDEMIX) is not read and no extra tidal/
+#   wind forcing file is required.
+ &GGL90_PARM01
+ GGL90diffTKEh=0.E3,
+ GGL90ck = 0.1,
+ GGL90ceps = 0.7,
+ GGL90alpha=30.,
+ GGL90m2 = 3.0,
+ GGL90TKEmin = 0.E-6,
+ GGL90TKEbottom=4.E-6,
+ GGL90TKEsurfMin=1.E-4,
+ mxlMaxFlag=2,
+ GGL90viscMax=1.E2,
+ GGL90diffMax=1.E2,
+ calcMeanVertShear=.TRUE.,
+ GGL90_dirichlet=.FALSE.,
+ &

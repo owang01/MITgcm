@@ -1,0 +1,83 @@
+# *********************
+# External Forcing Data
+# *********************
+#-- LLC30 lightweight verification config (Task 4). The 9 files below are
+#   the coarsened LLC30 12-month climatology produced by Task 2's
+#   preprocessing script (preprocess/output/forcing/eccov4r6_<var>_llc30_
+#   clim, real*4 big-endian, compact LLC30 shape (30,390), 12 monthly
+#   records each -- verify filenames against that directory's actual
+#   contents before editing this file). Mapped to EXF_NML_02 names per
+#   the production EXF_NML_02 convention (cross-checked against
+#   .../Time-invariant-adjoint/v4r6/input.V4r6.102/data.exf, read-only
+#   reference, read but not copied verbatim -- that file uses hourly
+#   (3600s) periods and useExfYearlyFields=.TRUE./per-year filenames,
+#   which do not apply to this config's single 12-record climatology).
+#
+ &EXF_NML_01
+ exf_iprec          = 32,
+ useExfYearlyFields = .FALSE.,
+#-- useAtmWind defaults to FALSE because code/EXF_OPTIONS.h #undefs
+#   ALLOW_ATM_WIND (required since this file sets ustressfile/
+#   vstressfile, not uwind/vwind -- see EXF_OPTIONS.h comment).
+ repeatPeriod       = 31104000.,
+#-- exf_check.F requires exactly one of readStressOnAgrid/
+#   readStressOnCgrid=.TRUE. whenever ustressfile/vstressfile are set
+#   (confirmed by reading exf_check.F ~line 550); the coarsened
+#   ustr/vstr climatology (Task 2) is on the model's native curvilinear
+#   A-grid cell centers, matching the production LLC90 reference
+#   (.../v4r6/input.V4r6.102/data.exf), which sets these the same way.
+ readStressOnAgrid   = .TRUE.,
+ rotateStressOnAgrid = .TRUE.,
+ &
+
+# *********************
+ &EXF_NML_02
+ ustressfile       = 'eccov4r6_ustr_llc30_clim',
+ ustressstartdate1 = 19920101,
+ ustressstartdate2 = 000000,
+ ustressperiod     = 2592000.,
+#
+ vstressfile       = 'eccov4r6_vstr_llc30_clim',
+ vstressstartdate1 = 19920101,
+ vstressstartdate2 = 000000,
+ vstressperiod     = 2592000.,
+#
+ atempfile         = 'eccov4r6_tmp2m_llc30_clim',
+ atempstartdate1   = 19920101,
+ atempstartdate2   = 000000,
+ atempperiod       = 2592000.,
+#
+ aqhfile           = 'eccov4r6_spfh2m_llc30_clim',
+ aqhstartdate1     = 19920101,
+ aqhstartdate2     = 000000,
+ aqhperiod         = 2592000.,
+#
+ precipfile        = 'eccov4r6_rain_llc30_clim',
+ precipstartdate1  = 19920101,
+ precipstartdate2  = 000000,
+ precipperiod      = 2592000.,
+#
+ wspeedfile        = 'eccov4r6_wspeed_llc30_clim',
+ wspeedstartdate1  = 19920101,
+ wspeedstartdate2  = 000000,
+ wspeedperiod      = 2592000.,
+#
+ swdownfile        = 'eccov4r6_dsw_llc30_clim',
+ swdownstartdate1  = 19920101,
+ swdownstartdate2  = 000000,
+ swdownperiod      = 2592000.,
+#
+ lwdownfile        = 'eccov4r6_dlw_llc30_clim',
+ lwdownstartdate1  = 19920101,
+ lwdownstartdate2  = 000000,
+ lwdownperiod      = 2592000.,
+#
+ apressurefile       = 'eccov4r6_pres_llc30_clim',
+ apressurestartdate1 = 19920101,
+ apressurestartdate2 = 000000,
+ apressureperiod     = 2592000.,
+ &
+
+# *********************
+ &EXF_NML_03
+ &

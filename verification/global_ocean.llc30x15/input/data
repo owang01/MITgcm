@@ -1,0 +1,98 @@
+# ====================
+# | Model parameters |
+# ====================
+#
+# LLC30 lightweight verification config -- adapted from
+# global_ocean.cs32x15/input/data (see docs/plans/
+# 20261103-llc30-lightweight-verification-config.md, Task 4). This is a
+# forward-only smoke-test config (no ecco/ctrl/autodiff, no scientific
+# validation claim -- see plan Non-Goals).
+#
+# Continuous equation parameters
+ &PARM01
+ tRef=15*20.,
+ sRef=15*35.,
+ viscAh =3.E5,
+ viscAr =1.E-3,
+ diffKrT=3.E-5,
+ diffKrS=3.E-5,
+ ivdc_kappa=10.,
+ implicitDiffusion=.TRUE.,
+ gravity=9.81,
+ rhoConst=1035.,
+ rhoConstFresh=1000.,
+ eosType='JMD95Z',
+ staggerTimeStep=.TRUE.,
+ vectorInvariantMomentum=.TRUE.,
+ implicitFreeSurface=.TRUE.,
+ exactConserv=.TRUE.,
+ select_rStar=2,
+ nonlinFreeSurf=4,
+ hFacInf=0.2,
+ hFacSup=2.0,
+ useRealFreshWaterFlux=.TRUE.,
+ allowFreezing=.TRUE.,
+ hFacMin=.1,
+ hFacMinDr=20.,
+#-- LLC30 bathymetry (preprocess/output/bathy/BATHY_LLC30.bin) is real*4;
+#   PARM05's readBinaryPrec below (32) controls the bathyFile read
+#   explicitly, but set the namelist-wide default to the same value for
+#   consistency (no other binary input file in this config needs 64-bit).
+ readBinaryPrec=32,
+#useSingleCpuIO=.TRUE.,
+ plotLevel=0,
+ &
+
+# Elliptic solver parameters
+ &PARM02
+ cg2dMaxIters=200,
+#cg2dTargetResidual=1.E-9,
+ cg2dTargetResWunit=6.65E-13,
+ &
+
+# Time stepping parameters
+ &PARM03
+ nIter0=0,
+ nTimeSteps=10,
+ deltaTMom   =1200.,
+ deltaTtracer=86400.,
+ deltaTFreeSurf=86400.,
+ deltaTClock =86400.,
+ abEps = 0.1,
+ tracForcingOutAB=1,
+ pChkptFreq  =1728000.,
+ dumpFreq    =622080000.,
+#-- monitorFreq=1. is required (not cosmetic): Task 6's "no NaN" check
+#   greps STDOUT.0000's per-step monitor output; without an explicit
+#   monitorFreq there may be no per-step output to grep at all.
+ monitorFreq =1.,
+#-- periodicExternalForcing/externForcingPeriod/externForcingCycle
+#   (cs32x15's PARM03 sets these) are NOT needed here: all surface
+#   forcing in this config comes from pkg/exf (see input/data.exf),
+#   not from PARM05's built-in periodic-forcing-file mechanism, which
+#   is what periodicExternalForcing controls. No PARM05 field below
+#   uses it.
+ &
+
+# Gridding parameters
+ &PARM04
+ usingCurvilinearGrid=.TRUE.,
+#-- horizGridFile intentionally left UNSET/blank: this makes
+#   ini_curvilinear_grid.F read the literal tile001.mitgrid ...
+#   tile005.mitgrid files produced by Task 2 (preprocess/output/grid/).
+#   Setting horizGridFile to any value switches the expected filename
+#   pattern to '<horizGridFile>.face%03d.bin' and additionally requires
+#   2 extra fields (AngleCS/AngleSN) that a 16-field mitgrid file does
+#   not contain -- confirmed by reading ini_curvilinear_grid.F. Leaving
+#   it blank also lets anglesAreSet=.FALSE., so CALC_GRID_ANGLES derives
+#   the angles, which is the correct behavior here.
+ radius_fromHorizGrid=6370.E3,
+ delR= 50., 70., 100., 140., 190.,
+       240., 290., 340., 390., 440.,
+       490., 540., 590., 640., 690.,
+ &
+
+# Input datasets
+ &PARM05
+ bathyFile      ='BATHY_LLC30.bin',
+ &

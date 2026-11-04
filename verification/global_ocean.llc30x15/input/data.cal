@@ -1,0 +1,12 @@
+#
+# *******************
+# Calendar Parameters
+# *******************
+#-- LLC30 lightweight verification config (Task 4). Start date matches
+#   data.exf's <var>startdate1/2 below, and the 1992 source year the
+#   forcing climatology (preprocess/output/forcing/) was derived from.
+ &CAL_NML
+ TheCalendar='gregorian',
+ startDate_1=19920101,
+ startDate_2=000000,
+ &
