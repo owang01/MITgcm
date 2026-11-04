@@ -98,22 +98,16 @@ Build gotchas
 
 Three runtime namelist/CPP-option requirements were discovered the hard way
 while first bringing this config up (each caused a hard `ABNORMAL END` on an
-otherwise-clean build) -- follow this list if you ever rebuild from scratch
-and hit a similar stop, same style as the exf/precip-scaling gotcha above:
+otherwise-clean build) -- if you ever rebuild from scratch and hit a similar
+stop, the source-of-truth explanation for each is the inline `Task 6 fix`
+comment at its own setting, not this README:
 
-* `input/data.ggl90`'s `GGL90TKEmin` must be `> 0` (set to `1.E-11` here,
-  the package's own coded default) -- `pkg/ggl90/ggl90_readparms.F` hard-STOPs
-  (`ABNORMAL END: S/R GGL90_READPARMS`) if `GGL90TKEmin<=0`.
-* `implicitViscosity=.TRUE.` is required in `input/data`'s `PARM01` whenever
-  `useGGL90=.TRUE.` -- `pkg/ggl90/ggl90_check.F` hard-STOPs
-  (`ABNORMAL END: S/R GGL90_CHECK`) otherwise.
-* `code/CPP_OPTIONS.h` must `#define NONLIN_FRSURF` whenever `input/data`
-  sets `nonlinFreeSurf`/`select_rStar` (both set here) -- without it, this
-  config silently inherits `model/inc/CPP_OPTIONS.h`'s `#undef NONLIN_FRSURF`
-  default, and `model/src/config_check.F` hard-STOPs
-  (`ABNORMAL END: S/R CONFIG_CHECK`). This one requires a full
-  `genmake2`/`make depend`/`make` rebuild, not just a namelist edit, since
-  it's a compile-time flag.
+* `input/data.ggl90`'s `GGL90TKEmin` (see the `Task 6 fix` comment there).
+* `input/data`'s `PARM01` `implicitViscosity=.TRUE.` (see the `Task 6 fix`
+  comment there).
+* `code/CPP_OPTIONS.h`'s `#define NONLIN_FRSURF` (see the `Task 6 fix`
+  comment there) -- this one requires a full `genmake2`/`make depend`/`make`
+  rebuild, not just a namelist edit, since it's a compile-time flag.
 
 Data provenance and coarsening method
 --------------------------------------

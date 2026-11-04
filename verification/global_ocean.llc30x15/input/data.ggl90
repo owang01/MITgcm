@@ -28,4 +28,12 @@
  GGL90diffMax=1.E2,
  calcMeanVertShear=.TRUE.,
  GGL90_dirichlet=.FALSE.,
+#-- The useIDEMIX / IO-related params (GGL90mixingMaps, GGL90writeState,
+#   &GGL90_PARM02) present in cs32x15/input.in_p/data.ggl90 (the precedent
+#   this file was derived from) are intentionally omitted here: this is a
+#   minimal smoke-test config with diagnostics not configured at all (no
+#   data.diagnostics, no useDiagnostics -- see plan's Non-Goals), so there
+#   is nothing for GGL90writeState/GGL90mixingMaps to write, and useIDEMIX
+#   is left at its coded default (.FALSE., see Task 4 deviation note above)
+#   so &GGL90_PARM02 is never read.
  &

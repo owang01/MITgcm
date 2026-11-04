@@ -185,29 +185,31 @@ EXPECTED_LLC30_TILE_BYTES = {
 FIELD_RULE = {
     "XC": "coord_lonlat", "YC": "coord_lonlat",
     "XG": "corner", "YG": "corner",
-    # DXV, DYU, RAZ: corner-INDEXED (full extent, like XG/YG) but are
-    # length/area QUANTITIES, not positions -- plain subsampling ("corner"
-    # rule) deflates them by ~factor^(ndims) since it picks one fine value
-    # instead of summing the `factor` (or factor^2) fine values a coarse
-    # corner-cell length/area actually spans. Confirmed by an earlier
-    # attempt at this exact fix: classifying these as "corner" (subsample)
-    # caused a real numerical blow-up (uvel_max growing >100x within 9
-    # timesteps, CALC_R_STAR abort) in this config's smoke-test rebuild,
-    # traced to mom_vecinv's vorticity term dividing by a RAZ that was ~9x
-    # too small. This entry is now purely INFORMATIONAL (rule name for the
-    # module docstring's rule-6 description) -- these 3 fields are NOT
-    # dispatched through coarsen_one_mitgrid_field/FIELD_RULE at runtime
-    # any more; they go through coarsen_corner_indexed_symmetric (called
-    # once for all 5 facets together, see process_grid), which also fixes
-    # a second, independent facet-seam-symmetry defect a windowed-sum-only
-    # version of this rule still had (see rule 6's full writeup above).
-    "DXV": "corner_indexed_symmetric",
-    "DYU": "corner_indexed_symmetric",
-    "RAZ": "corner_indexed_symmetric",
     "DXF": "xlength_sum", "DXC": "xlength_sum", "DXG": "xlength_sum",
     "DYF": "ylength_sum", "DYC": "ylength_sum", "DYG": "ylength_sum",
     "RAC": "area_sum", "RAW": "area_sum", "RAS": "area_sum",
 }
+# NOTE: DXV, DYU, RAZ are deliberately NOT entries in this dict (code-review
+# finding: a prior version listed them here as "corner_indexed_symmetric",
+# but that value was write-only dead data -- coarsen_one_mitgrid_field
+# explicitly asserts it is never called with these 3 names, and
+# process_grid() skips them before ever calling it). Their rule, for
+# documentation purposes only, IS "corner_indexed_symmetric" (see rule 6 in
+# the module docstring) -- they are corner-INDEXED (full extent, like
+# XG/YG) but are length/area QUANTITIES, not positions, so plain
+# subsampling ("corner" rule) would deflate them by ~factor^(ndims) since
+# it picks one fine value instead of summing the `factor` (or factor^2)
+# fine values a coarse corner-cell length/area actually spans. Confirmed by
+# an earlier attempt at this exact fix: classifying these as "corner"
+# (subsample) caused a real numerical blow-up (uvel_max growing >100x
+# within 9 timesteps, CALC_R_STAR abort) in this config's smoke-test
+# rebuild, traced to mom_vecinv's vorticity term dividing by a RAZ that was
+# ~9x too small. These 3 fields are instead dispatched directly (bypassing
+# FIELD_RULE/coarsen_one_mitgrid_field entirely) through
+# coarsen_corner_indexed_symmetric (called once for all 5 facets together,
+# see process_grid), which also fixes a second, independent
+# facet-seam-symmetry defect a windowed-sum-only version of this rule still
+# had (see rule 6's full writeup above).
 
 # ---------------------------------------------------------------------------
 # Per-field padding/boundary classification (fix for code-review finding:
@@ -928,6 +930,10 @@ def reduce_1d_group(arr_1d, how, factor=FACTOR):
     elements. Used by coarsen_one_mitgrid_field to reduce the single real
     "extra" boundary row (for "x_pad_y_real" fields) or column (for
     "y_pad_x_real" fields) along its remaining fine dimension.
+
+    For the sibling case of a length (n+1) array (n % factor == 0, so n+1
+    is NOT evenly divisible by factor, e.g. DXV/DYU/RAZ's corner-indexed
+    extent), see _windowed_reduce_1d instead.
     """
     n = arr_1d.shape[0]
     assert n % factor == 0, (n, factor)
@@ -1018,8 +1024,16 @@ def coarsen_one_mitgrid_field(name, arr_fine):
     directly (caller does not need to re-pad anything -- all 4 classes'
     padding/real-boundary handling is done here).
     """
-    rule = FIELD_RULE[name]
     pad_class = PADDING_CLASS[name]
+
+    # Checked via pad_class (not a FIELD_RULE lookup) because DXV/DYU/RAZ
+    # have no entry in FIELD_RULE at all -- see FIELD_RULE's NOTE comment.
+    assert pad_class != "corner_indexed_real", (
+        f"{name}: DXV/DYU/RAZ must go through coarsen_corner_indexed_symmetric "
+        f"(called once for all 5 facets together), not coarsen_one_mitgrid_field"
+    )
+
+    rule = FIELD_RULE[name]
     ny_p1, nx_p1 = arr_fine.shape
     ny, nx = ny_p1 - 1, nx_p1 - 1
     cny, cnx = ny // FACTOR, nx // FACTOR
@@ -1031,22 +1045,21 @@ def coarsen_one_mitgrid_field(name, arr_fine):
         assert rule == "corner", (name, rule)
         return coarsen_corner(arr_fine)
 
-    assert pad_class != "corner_indexed_real", (
-        f"{name}: DXV/DYU/RAZ must go through coarsen_corner_indexed_symmetric "
-        f"(called once for all 5 facets together), not coarsen_one_mitgrid_field"
-    )
+    # Dict-dispatch (consistent with PADDING_CLASS/_CORNER_INDEXED_HOW's
+    # lookup-table style elsewhere in this module) rather than if/elif.
+    _RULE_FUNCS = {
+        "coord_lonlat": lambda arr: coarsen_coord_lonlat(arr, is_longitude=(name == "XC")),
+        "xlength_sum": coarsen_xlength_sum,
+        "ylength_sum": coarsen_ylength_sum,
+        "area_sum": coarsen_area_sum,
+    }
 
     def apply_rule(arr):
-        if rule == "coord_lonlat":
-            return coarsen_coord_lonlat(arr, is_longitude=(name == "XC"))
-        elif rule == "xlength_sum":
-            return coarsen_xlength_sum(arr)
-        elif rule == "ylength_sum":
-            return coarsen_ylength_sum(arr)
-        elif rule == "area_sum":
-            return coarsen_area_sum(arr)
-        else:
+        try:
+            fn = _RULE_FUNCS[rule]
+        except KeyError:
             raise ValueError(f"unknown rule {rule!r} for field {name!r}")
+        return fn(arr)
 
     if pad_class == "both_pad":
         # XC, YC, DXF, DYF, RAC: last row AND column are zero-padding in
@@ -1471,23 +1484,31 @@ def coarsen_bathy_block(block9):
     value: land only if ALL 9 constituent cells are land (0); otherwise the
     MIN depth MAGNITUDE over the wet constituents only (most conservative /
     shallowest), preserving sign.
+
+    Vectorized over an arbitrary leading shape: `block9`'s LAST axis is the
+    9 constituent fine cells, so this also works called once on the full
+    (cny, cnx, 9) blocks array (see coarsen_bathy_facet), not just a single
+    9-element block.
     """
+    block9 = np.asarray(block9)
     wet_mask = block9 != 0.0
-    if not wet_mask.any():
-        return 0.0
-    wet_vals = block9[wet_mask]
-    # min magnitude among wet cells, preserving original sign
-    idx = np.argmin(np.abs(wet_vals))
-    return wet_vals[idx]
+    # Land cells get +inf abs-depth so argmin never picks them unless a
+    # whole block is land (handled separately below).
+    abs_vals = np.where(wet_mask, np.abs(block9), np.inf)
+    idx = np.argmin(abs_vals, axis=-1)
+    out = np.take_along_axis(block9, np.expand_dims(idx, -1), axis=-1)
+    out = np.squeeze(out, axis=-1)
+    all_land = ~wet_mask.any(axis=-1)
+    return np.where(all_land, 0.0, out)
 
 
 def coarsen_bathy_facet(arr):
     """3x3-block min-magnitude-over-wet-cells coarsening, built directly on
-    top of coarsen_bathy_block (one call per 3x3 block) so the rule is
-    implemented exactly once -- an earlier version of this function
-    reimplemented the same rule independently in vectorized form, which
-    coarsen_bathy_block (unused dead code at the time) risked silently
-    drifting out of sync with.
+    top of coarsen_bathy_block (one vectorized call over all blocks at
+    once) so the rule is implemented exactly once -- an earlier version of
+    this function reimplemented the same rule independently in vectorized
+    form, which coarsen_bathy_block (unused dead code at the time) risked
+    silently drifting out of sync with.
 
     arr: shape (ny, nx) real depth values (0 = land, negative = ocean depth).
     Returns: shape (ny//3, nx//3).
@@ -1496,11 +1517,7 @@ def coarsen_bathy_facet(arr):
     factor = FACTOR
     cny, cnx = ny // factor, nx // factor
     blocks = arr.reshape(cny, factor, cnx, factor).transpose(0, 2, 1, 3).reshape(cny, cnx, factor * factor)
-    out = np.empty((cny, cnx), dtype=arr.dtype)
-    for jy in range(cny):
-        for jx in range(cnx):
-            out[jy, jx] = coarsen_bathy_block(blocks[jy, jx])
-    return out
+    return coarsen_bathy_block(blocks)
 
 
 def process_bathy():
