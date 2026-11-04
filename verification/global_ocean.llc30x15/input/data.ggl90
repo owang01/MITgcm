@@ -15,7 +15,12 @@
  GGL90ceps = 0.7,
  GGL90alpha=30.,
  GGL90m2 = 3.0,
- GGL90TKEmin = 0.E-6,
+#-- Task 6 fix: GGL90TKEmin=0 fails pkg/ggl90/ggl90_readparms.F's hard
+#   check (STOP 'ABNORMAL END: S/R GGL90_READPARMS' if GGL90TKEmin<=0).
+#   Use the package's own coded default (1.0d-11, see ggl90_readparms.F)
+#   rather than the production v4r6 value (1.e-7), since this is just a
+#   numerical floor, not a tuned physics parameter, for this smoke test.
+ GGL90TKEmin = 1.E-11,
  GGL90TKEbottom=4.E-6,
  GGL90TKEsurfMin=1.E-4,
  mxlMaxFlag=2,

@@ -17,6 +17,11 @@
  diffKrT=3.E-5,
  diffKrS=3.E-5,
  ivdc_kappa=10.,
+#-- Task 6 fix: pkg/ggl90/ggl90_check.F hard-requires implicitViscosity
+#   (STOP 'ABNORMAL END: S/R GGL90_CHECK' otherwise); implicitDiffusion
+#   alone (already set below) is not sufficient for GGL90's vertical
+#   viscosity term.
+ implicitViscosity=.TRUE.,
  implicitDiffusion=.TRUE.,
  gravity=9.81,
  rhoConst=1035.,
