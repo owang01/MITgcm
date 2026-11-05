@@ -29,6 +29,21 @@ def read_tile_field_2d(name, tile):
     return raw.reshape(TILE_NY, TILE_NX)
 
 
+# Which tiles stack north-south (y) or west-east (x) within the same LLC
+# facet (tile 7, the Arctic cap, has no same-facet neighbor). Needed
+# because reading each tile's XG/YG alone only gives its south-west
+# corners, (ny,nx) extent -- the missing "+1" north row (y-stacked
+# facets) or east column (x-stacked facets) must come from the adjacent
+# tile's own true edge, NOT a linear extrapolation: this is a
+# curvilinear grid, so extrapolating from a tile's own last two rows/
+# columns measurably overshoots/undershoots the true neighboring edge
+# (confirmed empirically: up to ~0.36 deg off at the tile2/tile3 seam),
+# leaving a thin real gap between tiles that shows up as a faint white
+# line through the rendered map -- not a plotting/antialiasing artifact.
+Y_STACK_NEXT = {1: 2, 2: 3, 4: 5, 5: 6}   # tile -> its northward same-facet neighbor
+X_STACK_NEXT = {9: 10, 11: 12, 12: 13}    # tile -> its eastward same-facet neighbor
+
+
 def read_tile_corners(tile):
     path = os.path.join(RUN_DIR, f"XG.{tile:03d}.001.data")
     xg = np.fromfile(path, dtype=">f4").reshape(TILE_NY, TILE_NX)
@@ -37,15 +52,40 @@ def read_tile_corners(tile):
     )
     # XG/YG model output is cell-corner (south-west corner of each cell),
     # same (ny,nx) extent as the cell-center fields -- pad on the
-    # high-index side with a linear extrapolation to get the (ny+1,nx+1)
-    # corner mesh pcolormesh needs.
+    # high-index side. Where a same-facet neighbor exists, use ITS true
+    # edge (see Y_STACK_NEXT/X_STACK_NEXT above); only a genuinely open
+    # facet boundary (e.g. tile 3's north edge, tile 10's east edge) uses
+    # a linear extrapolation, since there's no neighbor to read instead.
     xg_ext = np.pad(xg, ((0, 1), (0, 1)), mode="edge")
     yg_ext = np.pad(yg, ((0, 1), (0, 1)), mode="edge")
-    xg_ext[:-1, -1] = xg[:, -1] + (xg[:, -1] - xg[:, -2])
-    xg_ext[-1, :-1] = xg[-1, :] + (xg[-1, :] - xg[-2, :])
+
+    if tile in Y_STACK_NEXT:
+        nxg = np.fromfile(
+            os.path.join(RUN_DIR, f"XG.{Y_STACK_NEXT[tile]:03d}.001.data"), dtype=">f4"
+        ).reshape(TILE_NY, TILE_NX)
+        nyg = np.fromfile(
+            os.path.join(RUN_DIR, f"YG.{Y_STACK_NEXT[tile]:03d}.001.data"), dtype=">f4"
+        ).reshape(TILE_NY, TILE_NX)
+        xg_ext[-1, :-1] = nxg[0, :]
+        yg_ext[-1, :-1] = nyg[0, :]
+    else:
+        xg_ext[-1, :-1] = xg[-1, :] + (xg[-1, :] - xg[-2, :])
+        yg_ext[-1, :-1] = yg[-1, :] + (yg[-1, :] - yg[-2, :])
+
+    if tile in X_STACK_NEXT:
+        nxg = np.fromfile(
+            os.path.join(RUN_DIR, f"XG.{X_STACK_NEXT[tile]:03d}.001.data"), dtype=">f4"
+        ).reshape(TILE_NY, TILE_NX)
+        nyg = np.fromfile(
+            os.path.join(RUN_DIR, f"YG.{X_STACK_NEXT[tile]:03d}.001.data"), dtype=">f4"
+        ).reshape(TILE_NY, TILE_NX)
+        xg_ext[:-1, -1] = nxg[:, 0]
+        yg_ext[:-1, -1] = nyg[:, 0]
+    else:
+        xg_ext[:-1, -1] = xg[:, -1] + (xg[:, -1] - xg[:, -2])
+        yg_ext[:-1, -1] = yg[:, -1] + (yg[:, -1] - yg[:, -2])
+
     xg_ext[-1, -1] = xg_ext[-1, -2] + (xg_ext[-1, -2] - xg_ext[-1, -3])
-    yg_ext[:-1, -1] = yg[:, -1] + (yg[:, -1] - yg[:, -2])
-    yg_ext[-1, :-1] = yg[-1, :] + (yg[-1, :] - yg[-2, :])
     yg_ext[-1, -1] = yg_ext[-1, -2] + (yg_ext[-1, -2] - yg_ext[-1, -3])
     return xg_ext, yg_ext
 
