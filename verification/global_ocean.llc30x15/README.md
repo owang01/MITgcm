@@ -11,9 +11,13 @@ and the only other LLC config in this project (`global_oce_llc90`, in a
 separate contrib repo) is full production scale (595M, 12+ cores) and far too
 heavy to build/run casually.
 
-The grid, bathymetry, and forcing are not idealized/analytic: they are real
-ECCO V4r6 LLC90 fields, block-coarsened 3:1 per linear dimension (see "Data
-provenance and coarsening method" below). This makes the config a general LLC
+The grid, bathymetry, forcing, and initial Theta/Salt are not idealized/
+analytic: they are real ECCO V4r6 LLC90 fields, coarsened 3:1 per linear
+dimension (horizontally) and, for the initial condition, also remapped
+vertically from V4r6's 50 levels to this config's own 15 (see "Data
+provenance and coarsening method" below, and
+`preprocess/README.md`'s "Initial condition" section). This makes the config
+a general LLC
 dev sandbox -- useful on its own for testing `pkg/exch2`/tiling/core-MITgcm
 changes -- and a possible future foundation for adding `pkg/ecco`/`pkg/ctrl`/
 adjoint support (not attempted here; see Non-Goals).
@@ -186,15 +190,16 @@ claims:
     stress coarsening -- there is no narrower escape hatch in `pkg/exf` to
     disable only the `hflux` check, so this is an accepted trade-off, not
     an oversight.
-  - A concrete, observed consequence of the above (not just an abstract
-    risk): `results/output.txt` shows `dynstat_theta_max` rising from
-    `20.0` to `23.58` degC over the 10-step smoke test -- a warming rate
-    of roughly `0.36` degC/day, plausibly tied to the `hflux` outliers
-    this `useExfCheckRange=.FALSE.` setting permits through. This has not
-    been root-caused further (per this config's Non-Goals); a future
-    reader extending the integration length should expect this trend to
-    continue unless the forcing-coarsening or the range-check escape
-    hatch is revisited.
+  - A warming/drift trend tied to the `hflux` outliers this
+    `useExfCheckRange=.FALSE.` setting permits through is plausible over a
+    longer integration than the 10-step smoke test exercises here; this has
+    not been root-caused (per this config's Non-Goals). (An earlier version
+    of this note measured `dynstat_theta_max` drift against this config's
+    original flat `tRef=15*20.` initial condition -- that measurement is
+    stale now that the IC is real V4r6-derived data, see "Initial
+    condition" above; a future reader extending the integration length
+    should re-measure drift against the current IC rather than reuse the
+    old number.)
   - The `ustr`/`vstr` wind-stress vector components are coarsened by naive
     per-component block-averaging, without rotating to a common reference
     frame first, even though facets 4/5 and the Arctic cap are rotated

@@ -349,3 +349,157 @@ other `verification/` experiment's own grid/forcing binaries, e.g.
 `tutorial_held_suarez_cs/input/grid_cs32.face00?.bin`) — after running
 this script, copy `output/{grid,bathy,forcing}/*` into `../input/` to
 update them.
+
+## Initial condition (Theta/Salt) — `coarsen_initial_ts_to_llc30.py`
+
+A separate script, `coarsen_initial_ts_to_llc30.py`, coarsens real V4r6
+initial Theta/Salt into a 15-level LLC30 initial condition, replacing this
+config's original flat analytic IC (`tRef=15*20., sRef=15*35.`, no
+`hydrogThetaFile`/`hydrogSaltFile` at all). It is a separate script from
+`coarsen_llc90_to_llc30.py` because it solves a genuinely different
+problem — a **vertical** remap (50 production levels → LLC30's own 15
+levels), not just the horizontal 3:1 coarsening every other field here
+needs — but it imports and reuses `coarsen_llc90_to_llc30.py`'s
+`split_compact_into_facets()`/`assemble_facets_into_compact()` directly
+(same compact-array/facet-orientation convention, unchanged).
+
+### Source data (read-only, never modified)
+
+- Real V4r6 initial Theta/Salt: a production pickup/restart file,
+  `/ecco_nfs_1/owang/projects/ECCO/llc90/v4/release6/PO.DAAC/ancillary_data/ancillary_data_orig/input_init/pickup.0000000001.data`
+  — confirmed (by direct byte-level read-back, not just its `.meta`
+  header) to be raw, unformatted, big-endian real\*8, no record markers,
+  453 stacked `(1170,90)` records exactly matching the file's actual size
+  (`453*1170*90*8 = 381,607,200` bytes). Field order (per the `.meta`
+  file's `fldList`): `Uvel, Vvel, Theta, Salt, GuNm1, GuNm2, GvNm1, GvNm2,
+  AddMass` (each 50 levels = 450 records), then `EtaN, dEtaHdt, EtaH`
+  (2-D, 3 more records) — `8*50 + 50 + 3 = 453`. **Theta occupies records
+  100–149, Salt occupies records 150–199**, k=0 is the surface (confirmed
+  empirically: level-0 Theta min/max ≈ −2.54/32.39°C, physically sane SST;
+  level-49 ≈ −0.73/1.86°C, physically sane abyssal temperature — not
+  reversed or duplicated).
+- Real fine (LLC90) bathymetry:
+  `/ecco_nfs_1/owang/projects/ECCO/llc90/v4/release6/PO.DAAC/ancillary_data/ancillary_data_orig/input_init/BATHY_ICE_SHELF_CAVITY_PLUS_ICE_FRONT_LLC_0090.bin`
+  — real\*4 big-endian, same `(1170,90)` compact convention as this
+  script's `BATHY_SRC` (confirmed: `90*1170*4 = 421,200` bytes matches the
+  file size exactly). **This is deliberately NOT the same file as the
+  already-coarsened `../input/BATHY_LLC30.bin`** — the real fine
+  bathymetry is the only place per-column seafloor depth is still precise
+  enough to build a correct wet/dry mask; `BATHY_LLC30.bin` has already
+  lost that precision via its own min-magnitude-over-wet-cells rule.
+- Production V4r6's 50-level `delR`, `tRef`, and `sRef` — verbatim from
+  `Time-invariant-adjoint/v4r6/input.V4r6.102/data`'s `&PARM01`/`&PARM04`.
+  There is no local file in this repo to parse these from, so they are
+  hardcoded in `coarsen_initial_ts_to_llc30.py`, guarded by explicit
+  length/sum asserts (`delR` sums to 6134.5 m over 50 levels; `tRef`'s
+  Fortran repeat-count literal expands to exactly 50 values) against a
+  hand-transcription error, mirroring this directory's own
+  `MONTH_HOURS_1992` leap-year-sum assert pattern.
+
+### Design: two-stage remap (vertical first, then horizontal)
+
+T/S coarsening needs a **vertical** remap that nothing else in this
+preprocessing pipeline needs (every other field — grid metrics,
+bathymetry, forcing — is purely 2-D/horizontal). The two stages, in
+order, and why the order matters:
+
+1. **Vertical remap, at full LLC90 horizontal resolution.** For each
+   LLC90 fine column, remap the 50 production levels down to LLC30's
+   *existing* 15 levels (parsed directly out of `../input/data`'s
+   `&PARM04` at script load time — NOT re-hardcoded a second time, since
+   that `input/data` text is the actual source of truth this script must
+   stay consistent with) via a depth-weighted overlap-conservative
+   average, masked by a **fine 50-level wet mask** built from the real
+   fine bathymetry and production's 50-level `delR`.
+2. **Horizontal 3:1 coarsening**, on the now-15-level, still-LLC90-
+   resolution fields, using a **second, independently-computed** wet mask
+   (same fine bathymetry, now evaluated against LLC30's own 15-level
+   `delR`) and a new wet-cell-only mean.
+
+Vertical must come first: the real fine bathymetry is the only place
+per-column seafloor depth is still precise, so it's the only correct
+basis for deciding which source levels are physically meaningful for a
+given column. Doing horizontal-first would force deciding wet/dry on an
+already-horizontally-blurred depth, and would need extra wet masks at
+every stage instead of exactly two. The two wet masks are intentionally
+kept as two separate, independently-named variables (`wet50` for Stage 1,
+`wet15` for Stage 2) — reusing one for the other's purpose is the most
+likely copy-paste bug given how similar they are (same function, same
+bathymetry, different `delR` argument).
+
+### The new coarsening rule: wet-cell-only mean
+
+Neither existing rule in `coarsen_llc90_to_llc30.py` is correct for T/S:
+`coarsen_bathy_block`'s min-magnitude-over-wet-cells rule is right for
+bathymetry (pick the shallowest/safest depth) but wrong for a state
+variable like temperature; `coarsen_forcing_facet_mean`'s plain
+unweighted mean is right for 2-D flux/state forcing fields (every
+constituent cell is always wet) but wrong for T/S, which must exclude dry
+(below-seafloor) constituent cells from the average or the result would
+be biased toward whatever fill/stale value sits below the real seafloor.
+`coarsen_ts_facet_wet_mean` (new, in `coarsen_initial_ts_to_llc30.py`)
+follows `coarsen_bathy_facet`'s vectorized reshape/transpose style but
+averages only over the wet constituents of each 3×3 block, with a
+`wet_frac_coarse` fraction returned alongside the value — used by the
+surface-wet-fraction correctness check (see below), not fed back into the
+model.
+
+### Verification
+
+- **Byte-count assertions** at every read/write (pickup source:
+  `381,607,200` bytes; each output file: `15*390*30*4 = 702,000` bytes).
+- **Overlap-matrix row-sum check**: the vertical-remap weight matrix's
+  row sums must exactly equal LLC30's 15-level `delR` — the vertical-
+  remap analogue of this directory's own `verify_rac_conservation`.
+- **Bounds-preserved per level**: coarse T/S (wet cells only) must stay
+  within that level's Stage-1 fine min/max — guaranteed by construction
+  (nested weighted means), asserted anyway since a masking bug would show
+  up here as an out-of-range value.
+- **Surface wet-fraction vs. `../input/BATHY_LLC30.bin`**: this script's
+  own surface wet-cell-count land fraction is compared, per facet,
+  against the already-committed `BATHY_LLC30.bin`'s min-magnitude-based
+  land fraction. Different aggregation rules, so exact agreement isn't
+  guaranteed in principle — in practice, on this data, every facet
+  matched to 4 decimal places (worst per-facet diff `0.0000`).
+- **Mandatory pickup fill-value sanity check** (the one check that can't
+  be skipped): directly inspects raw pickup Theta/Salt values at a
+  handful of known-shallow fine columns, at levels the 50-level wet mask
+  marks dry, and asserts they're small-magnitude, not a suspicious
+  sentinel (e.g. not ±999/±9999). This exists because an off-by-one in
+  the wet-mask's `rF[k] > seafloor` comparison (`>` vs. `>=`, or the wrong
+  interface) would NOT necessarily be caught by the bounds-preserved or
+  byte-count checks if the leaked fill value happened to look physically
+  plausible — a quiet failure mode, unlike the loud numerical blow-ups
+  the original grid-coarsening review cycle caught (see the module
+  docstring in `coarsen_llc90_to_llc30.py` for that history).
+- **Known-location spot-checks**: looks up the LLC30 cell nearest the
+  equatorial Pacific and the Weddell Sea (via the same `tile00X.mitgrid`
+  XC/YC lookup this repo's plotting scripts use) and asserts surface
+  Theta is in a physically sane range for each (confirmed: 29.2°C and
+  −1.9°C respectively).
+- **End-to-end**: build + `mpiexec -np 1 ./mitgcmuv` the 10-step smoke
+  test with the new IC linked in. Confirmed `STOP NORMAL END`, no NaN, no
+  `ABNORMAL END` from `model/src/ini_theta.F`'s own `checkIniTemp` check
+  (left at its default `.TRUE.` — a wet cell with `theta==0.0` would
+  trigger a hard stop there, a free built-in regression check against
+  exactly the masking-bug class this design is most at risk of). The
+  model's own `dynstat_theta_max/min/mean` monitor output stayed
+  physically sane and stable across all 10 steps.
+
+### Output
+
+- `output/initial_condition/THETA_LLC30_INIT.bin` and
+  `SALT_LLC30_INIT.bin` — real\*4 big-endian, 15 stacked `(390,30)`
+  compact records each (`15*390*30*4 = 702,000` bytes).
+- `output/initial_condition/tRef_sRef_llc30.txt` — paste-ready text
+  (`tRef= v1,...,v15,` / `sRef= 15*34.5,`) for manual insertion into
+  `../input/data`'s `&PARM01` — namelist literals aren't something this
+  script can write into `data` directly. `sRef` remaps to exactly flat
+  `34.5` since production `sRef` is itself flat (also a useful trivial
+  regression check on the remap function).
+
+Same manual-copy convention as grid/bathy/forcing: `output/` is this
+script's own gitignored scratch/regeneration directory, not the config's
+actual input location — after running, copy the two `.bin` files into
+`../input/` by hand (nothing automates this), and manually paste the
+printed `tRef`/`sRef` values into `../input/data`.

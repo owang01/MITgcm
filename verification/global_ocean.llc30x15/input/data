@@ -10,8 +10,17 @@
 #
 # Continuous equation parameters
  &PARM01
- tRef=15*20.,
- sRef=15*35.,
+#-- tRef/sRef remapped from real V4r6 production values (50-level
+#   tRef/sRef in Time-invariant-adjoint/v4r6/input.V4r6.102/data's PARM01)
+#   via preprocess/coarsen_initial_ts_to_llc30.py's depth-weighted overlap
+#   remap onto this config's own 15-level delR (see that script and
+#   preprocess/README.md's "Initial condition" section) -- replaces the
+#   previous flat analytic tRef=15*20./sRef=15*35. now that a real
+#   hydrogThetaFile/hydrogSaltFile (PARM05 below) supplies the actual 3-D
+#   initial state; tRef/sRef only matter at dry cells once those are set.
+#   sRef remaps to exactly flat 34.5 since production sRef is itself flat.
+ tRef= 22.6000,19.7170,15.0626,11.0093,8.2365,6.0819,4.5794,3.5163,2.3917,1.8283,1.0000,1.0000,1.0000,1.0000,1.0000,
+ sRef=15*34.5,
  viscAh =3.E5,
  viscAr =1.E-3,
  diffKrT=3.E-5,
@@ -100,4 +109,10 @@
 # Input datasets
  &PARM05
  bathyFile      ='BATHY_LLC30.bin',
+#-- real V4r6-derived initial T/S (see preprocess/coarsen_initial_ts_to_llc30.py
+#   and preprocess/README.md's "Initial condition" section for provenance/
+#   coarsening method), replacing the previous flat tRef/sRef-only IC.
+#   real*4 big-endian, same readBinaryPrec=32 convention as bathyFile above.
+ hydrogThetaFile='THETA_LLC30_INIT.bin',
+ hydrogSaltFile ='SALT_LLC30_INIT.bin',
  &
