@@ -101,9 +101,15 @@
 #   it blank also lets anglesAreSet=.FALSE., so CALC_GRID_ANGLES derives
 #   the angles, which is the correct behavior here.
  radius_fromHorizGrid=6370.E3,
+#-- Last level extended from cs32x15's original 690. to 1480. (sum
+#   5200.->5990.): the real coarsened bathymetry (input/BATHY_LLC30.bin)
+#   has wet cells down to -5959.976 m, deeper than the old 5200 m grid
+#   bottom -- 353 of 7436 wet cells (4.75%) were being silently clipped
+#   to the grid floor. Only the deepest (15th) level changes; levels
+#   1-14 are unchanged from the original cs32x15-derived profile.
  delR= 50., 70., 100., 140., 190.,
        240., 290., 340., 390., 440.,
-       490., 540., 590., 640., 690.,
+       490., 540., 590., 640., 1480.,
  &
 
 # Input datasets
