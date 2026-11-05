@@ -43,13 +43,19 @@ Run
 mkdir run
 cd run
 ln -s ../input/* .
-ln -s ../preprocess/output/grid/*.mitgrid .
-ln -s ../preprocess/output/bathy/BATHY_LLC30.bin .
-ln -s ../preprocess/output/forcing/eccov4r6_*_llc30_clim .
 ln -s ../build/mitgcmuv .
 mpiexec -np 1 ./mitgcmuv > output.txt
 cd ..
 ```
+
+The grid (`tile00{1..5}.mitgrid`), bathymetry (`BATHY_LLC30.bin`), and
+forcing climatology (`eccov4r6_*_llc30_clim`) files are committed directly
+in `input/`, same as every other `verification/` experiment's own grid/
+forcing binaries (e.g. `tutorial_held_suarez_cs/input/grid_cs32.face00?.bin`)
+-- no `prepare_run`/separate symlink step is needed. They were generated
+once by `preprocess/coarsen_llc90_to_llc30.py` (see "Data provenance and
+coarsening method" below); re-run that script only if you need to
+regenerate them from the source LLC90 data.
 
 `nPx=1` (all 13 tiles run on a single process, per `code/SIZE.h`), so
 `mpiexec -np 1` is correct and sufficient here -- do not guess at a
@@ -151,9 +157,9 @@ relative difference of 0.0, and a decisive, non-permutation-invariant
 facet-boundary-continuity check (comparing `XG`/`YG` corner values across
 every `facetEdgeLink`-implied facet connection) passed with residuals at
 floating-point-rounding level (~1e-13 degrees) at all 16 connections, in
-the run that produced this config's `preprocess/output/`; see
-`preprocess/README.md` for that and all other verification results in
-full.
+the run that produced the committed `input/` grid/bathymetry/forcing
+files; see `preprocess/README.md` for that and all other verification
+results in full.
 
 Non-Goals / known limitations
 ------------------------------

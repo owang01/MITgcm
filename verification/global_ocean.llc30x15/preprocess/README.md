@@ -15,7 +15,8 @@ the "Technical Details" section) for the full derivation history.
   layout assumptions below.
 - `coarsen_llc90_to_llc30.py` (Task 2) — does all the actual coarsening:
   grid tiles, bathymetry, and the 9 combforc forcing variables. Produces
-  everything under `output/`.
+  everything under `output/` (a scratch directory — see "Output" below for
+  why the committed files actually live in `../input/`).
 
 ## Source data (read-only, never modified)
 
@@ -341,5 +342,10 @@ value to average, only flux/stress magnitudes.
 - `output/forcing/eccov4r6_<var>_llc30_clim` — 9 files, 12-month LLC30
   forcing climatology each, compact shape `(30,390)` per record.
 
-`output/` is a generated/intermediate build-artifact directory (Task 5 of
-the plan adds a `.gitignore` covering this at the config-root level).
+`output/` is this script's gitignored scratch/regeneration directory, not
+the config's actual input location. The committed, authoritative copies
+of all 15 files live directly in `../input/` (same convention as every
+other `verification/` experiment's own grid/forcing binaries, e.g.
+`tutorial_held_suarez_cs/input/grid_cs32.face00?.bin`) — after running
+this script, copy `output/{grid,bathy,forcing}/*` into `../input/` to
+update them.
