@@ -74,6 +74,18 @@
  deltaTClock =86400.,
  abEps = 0.1,
  tracForcingOutAB=1,
+#-- Real V4r6 pickup-file cold start (see preprocess/build_llc30_pickup.py
+#   and HANDOFF.md's "Pickup-file" section): pickupSuff redirects
+#   ini_fields.F's dispatch straight to READ_PICKUP, bypassing the
+#   hydrogThetaFile/hydrogSaltFile/pSurfInitFile inline-IC path entirely
+#   (PARM05's hydrogThetaFile/hydrogSaltFile below are now unused dead
+#   weight, left in place only for provenance -- see that section).
+#   pickupStrictlyMatch=.FALSE. matches real V4r6 production's own
+#   convention; this pickup supplies every required/needed field
+#   (Uvel/Vvel/Theta/Salt/GuNm1/GvNm1/EtaN/dEtaHdt/EtaH) so the
+#   strictly-match relaxation is cheap insurance, not relied upon.
+ pickupSuff='0000000000',
+ pickupStrictlyMatch=.FALSE.,
  pChkptFreq  =1728000.,
  dumpFreq    =622080000.,
 #-- monitorFreq=1. is required (not cosmetic): Task 6's "no NaN" check
@@ -115,10 +127,18 @@
 # Input datasets
  &PARM05
  bathyFile      ='BATHY_LLC30.bin',
-#-- real V4r6-derived initial T/S (see preprocess/coarsen_initial_ts_to_llc30.py
-#   and preprocess/README.md's "Initial condition" section for provenance/
-#   coarsening method), replacing the previous flat tRef/sRef-only IC.
-#   real*4 big-endian, same readBinaryPrec=32 convention as bathyFile above.
- hydrogThetaFile='THETA_LLC30_INIT.bin',
- hydrogSaltFile ='SALT_LLC30_INIT.bin',
+#-- NOW UNUSED (superseded by PARM03's pickupSuff above, see that
+#   comment): real V4r6-derived initial T/S
+#   (preprocess/coarsen_initial_ts_to_llc30.py and preprocess/README.md's
+#   "Initial condition" section have the provenance/coarsening method),
+#   left here uncommented-but-inert only as provenance for where the
+#   SAME Theta/Salt data (reused verbatim by
+#   preprocess/build_llc30_pickup.py) originally came from -- real*4
+#   big-endian, same readBinaryPrec=32 convention as bathyFile above.
+#   ini_fields.F's dispatch never reaches INI_THETA/INI_SALT/INI_PSURF
+#   once pickupSuff is set, so these two lines would never be read at
+#   runtime even if left active -- commented out rather than left as
+#   live-looking-but-silently-ignored namelist entries.
+#hydrogThetaFile='THETA_LLC30_INIT.bin',
+#hydrogSaltFile ='SALT_LLC30_INIT.bin',
  &

@@ -4,11 +4,14 @@ top vertical level) at step 0 vs. step 10 of the LLC30 smoke test, same
 facet/tile reassembly + dateline-seam-masking approach as
 plot_bathy_sanity.py / plot_T_snapshot.py.
 
-Both fields start spatially uniform by construction (Eta=0 everywhere,
-S=sRef=35 psu at all levels -- see input/data's &PARM01, no
-hydrogSaltFile/pSurfInitFile is set) -- this is the model's actual
-analytic initial condition, not a plotting artifact. See T_step0_vs_step10
-for the matching temperature plot and the same caveat for tRef=20.
+Both fields are real, spatially-varying V4r6-derived initial conditions,
+NOT flat/uniform (this docstring previously said otherwise -- stale as
+of the real-pickup-file session, see HANDOFF.md): Salt has been real
+since coarsen_initial_ts_to_llc30.py; Eta became real in the same session
+that switched this config's cold start over to reading a real V4r6
+pickup file via pickupSuff (preprocess/build_llc30_pickup.py) -- see
+plot_ssh_map.py for the dedicated Eta/SSH map. See T_step0_vs_step10 for
+the matching temperature plot.
 """
 import os
 
