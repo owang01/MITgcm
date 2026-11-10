@@ -17,27 +17,39 @@ C CPP flags controlling particular source code features
 
 C-- Forcing code options:
 
+C-- Phase A (adjoint-experiment plan, see HANDOFF.md): the following
+C   flags are flipped to match real V4r6's own CPP_OPTIONS.h exactly
+C   (confirmed against Time-invariant-adjoint/v4r6/code12m_..._v4r5/
+C   CPP_OPTIONS.h). Flags gated on production-specific data this
+C   project doesn't have (geothermalFile, 3-D diffKrFile, balance-flux
+C   target data) are defined here (V4r6-compile-compatible) but their
+C   namelist variables are left unset/at a safe no-op default in
+C   input/data (V4r6-tuning-compatible is explicitly NOT attempted).
+
 C o Shortwave heating as extra term in APPLY_FORCING_T (apply_forcing.F)
-#undef SHORTWAVE_HEATING
+#define SHORTWAVE_HEATING
 
 C o Include/exclude Geothermal Heat Flux at the bottom of the ocean
-#undef ALLOW_GEOTHERMAL_FLUX
+#define ALLOW_GEOTHERMAL_FLUX
 
 C o Allow to account for heating due to friction (and momentum dissipation)
 #undef ALLOW_FRICTION_HEATING
 
 C o Allow mass source or sink of Fluid in the interior
 C   (3-D generalisation of oceanic real-fresh water flux)
-#undef ALLOW_ADDFLUID
+#define ALLOW_ADDFLUID
 
 C o Include pressure loading code
 #define ATMOSPHERIC_LOADING
+#ifdef ATMOSPHERIC_LOADING
+#define ALLOW_IB_CORR
+#endif
 
 C o Include/exclude balancing surface forcing fluxes code
-#undef ALLOW_BALANCE_FLUXES
+#define ALLOW_BALANCE_FLUXES
 
 C o Include/exclude balancing surface forcing relaxation code
-#undef ALLOW_BALANCE_RELAX
+#define ALLOW_BALANCE_RELAX
 
 C o Include/exclude checking for negative salinity
 #undef CHECK_SALINITY_FOR_NEGATIVE_VALUES
@@ -73,7 +85,7 @@ C o Include/exclude call to S/R CALC_DIFFUSIVITY
 #define INCLUDE_CALC_DIFFUSIVITY_CALL
 
 C o Allow full 3D specification of vertical diffusivity
-#undef ALLOW_3D_DIFFKR
+#define ALLOW_3D_DIFFKR
 
 C o Allow latitudinally varying BryanLewis79 vertical diffusivity
 #undef ALLOW_BL79_LAT_VARY
@@ -97,7 +109,7 @@ C o Include/exclude Implicit vertical advection code
 #define INCLUDE_IMPLVERTADV_CODE
 
 C o Include/exclude AdamsBashforth-3rd-Order code
-#undef ALLOW_ADAMSBASHFORTH_3
+#define ALLOW_ADAMSBASHFORTH_3
 
 C o Include/exclude Quasi-Hydrostatic Stagger Time-step AdamsBashforth code
 #undef ALLOW_QHYD_STAGGER_TS
@@ -119,8 +131,26 @@ C o Disable code for rStar coordinate and/or code for Sigma coordinate
 c#define DISABLE_RSTAR_CODE
 c#define DISABLE_SIGMA_CODE
 
+C o "Exact Conservation" of fluid in Free-Surface formulation has been
+C   retired as a CPP flag at this checkpoint -- model/src/config_check.F
+C   now #define's EXACT_CONSERV unconditionally itself (and errors if
+C   #undef'd here), so explicitly #define-ing it here is dead/redundant
+C   (confirmed real V4r6's own equivalent setting is likewise moot at
+C   this newer checkpoint -- this repo intentionally stays on its own
+C   checkpoint rather than V4r6's older one, see HANDOFF.md). Left
+C   un-set here; exactConserv itself is still a live runtime &PARM01
+C   flag (input/data), unaffected by this CPP retirement.
+
 C o Include/exclude nonHydrostatic code
 #undef ALLOW_NONHYDROSTATIC
+
+C o Allow ice-shelf/ice-front cavity geometry via pkg/steep_icecavity
+C   (STIC) -- gates ini_masks_etc.F's STIC_INIT_DEPTHS call. Needed
+C   because this config uses STIC (not pkg/icefront, not plain
+C   pkg/shelfice alone) as the real substitute for V4r6's own private,
+C   never-upstreamed ICEFRONTdepthFile-in-shelfice patch -- see
+C   HANDOFF.md for the full rationale.
+#define ALLOW_STEEP_ICECAVITY
 
 C o Include/exclude GM-like eddy stress in momentum code
 #undef ALLOW_EDDYPSI
@@ -131,13 +161,15 @@ C o Include/exclude code for Non Self-Adjoint (NSA) conjugate-gradient solver
 #undef ALLOW_CG2D_NSA
 
 C o Include/exclude code for single reduction Conjugate-Gradient solver
-#define ALLOW_SRCG
+C   undef'd to match real V4r6 (also the AD-safe choice, confirmed by
+C   this project's own adjoint-only research -- see HANDOFF.md).
+#undef ALLOW_SRCG
 
 C o Choices for implicit solver routines solve_*diagonal.F
 C   The following has low memory footprint, but not suitable for AD
 #undef SOLVE_DIAGONAL_LOWMEMORY
 C   The following one suitable for AD but does not vectorize
-#undef SOLVE_DIAGONAL_KINNER
+#define SOLVE_DIAGONAL_KINNER
 
 C   Implementation alternative (might be faster on some platforms ?)
 #undef USE_MASK_AND_NO_IF

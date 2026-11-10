@@ -1,0 +1,7 @@
+# Parameters for STEEP_ICECAVITY package -- STICdepthFile points at the
+# newly-coarsened ICE_DRAFT_LLC30.bin (same source file as
+# data.shelfice's SHELFICEtopoFile -- confirmed these drive TWO
+# independent mechanisms, see data.shelfice's comment and HANDOFF.md).
+ &STIC_PARM01
+ STICdepthFile = 'ICE_DRAFT_LLC30.bin',
+ &

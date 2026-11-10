@@ -10,6 +10,12 @@ Locations chosen to span different regimes: equatorial Pacific (warm,
 well-mixed), Weddell Sea (cold, polar), North Atlantic (mid-latitude,
 seasonally forced), and the Mediterranean outflow region visible in
 plot_depth_level_maps.py's S maps (distinct salty signature at depth).
+
+Phase A (adjoint-experiment plan, see HANDOFF.md): this config now sets
+useSingleCpuIO=.TRUE. (matching real V4r6), so run_alldump/ writes one
+GLOBAL file per field instead of 13 per-tile files -- the nearest-cell
+lookup now searches each facet's own (ny,nx) XC/YC array directly (no
+tile-corner stitching needed for a single-point lookup/timeseries).
 """
 import os
 
@@ -19,9 +25,16 @@ import matplotlib.pyplot as plt
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN_DIR = os.path.abspath(os.path.join(HERE, "..", "run_alldump"))
 
-NTILES = 13
-TILE_NY, TILE_NX, TILE_NZ = 30, 30, 15
 NSTEPS = 11
+NLEV = 15
+
+FACET_DIMS = {
+    1: (90, 30),
+    2: (90, 30),
+    3: (30, 30),
+    4: (30, 90),
+    5: (30, 90),
+}
 
 LOCATIONS = [
     ("Equatorial Pacific", 0.0, -160.0),
@@ -32,43 +45,61 @@ LOCATIONS = [
 DEPTH_LEVELS = [0, 4, 8]  # surface, 455 m, 1615 m (see RC.data)
 
 
-def find_tile_cell(lat0, lon0):
-    """Return (tile, j, i) of the LLC30 cell nearest (lat0, lon0), using
-    each tile's own XC/YC (same lookup as the other plotting scripts)."""
+def read_global_facets(path, nlev=None):
+    """Read a GLOBAL run_alldump/<name>.data file (real*4 big-endian) and
+    split into its 5 native-shaped facets -- flat concatenation of each
+    facet's own native (ny,nx) (or (nlev,ny,nx)) row-major block, same
+    convention as plot_bathy_sanity.py's read_bathy_facets."""
+    raw = np.fromfile(path, dtype=">f4")
+    per_level = 390 * 30
+    if nlev is None:
+        assert raw.size == per_level, (path, raw.size, per_level)
+        levels = raw.reshape(1, per_level)
+    else:
+        assert raw.size == nlev * per_level, (path, raw.size, nlev, per_level)
+        levels = raw.reshape(nlev, per_level)
+
+    facets = {}
+    offset = 0
+    for facet in (1, 2, 3, 4, 5):
+        ny, nx = FACET_DIMS[facet]
+        n = ny * nx
+        block = levels[:, offset:offset + n].reshape((levels.shape[0], ny, nx))
+        facets[facet] = block[0] if nlev is None else block
+        offset += n
+    assert offset == per_level
+    return facets
+
+
+def find_facet_cell(xc_facets, yc_facets, lat0, lon0):
+    """Return (facet, j, i) of the LLC30 cell nearest (lat0, lon0),
+    searching each facet's own GLOBAL XC/YC array."""
     best = None
-    for tile in range(1, NTILES + 1):
-        xc = np.fromfile(os.path.join(RUN_DIR, f"XC.{tile:03d}.001.data"), dtype=">f4").reshape(
-            TILE_NY, TILE_NX
-        )
-        yc = np.fromfile(os.path.join(RUN_DIR, f"YC.{tile:03d}.001.data"), dtype=">f4").reshape(
-            TILE_NY, TILE_NX
-        )
+    for facet in (1, 2, 3, 4, 5):
+        xc, yc = xc_facets[facet], yc_facets[facet]
         dist = (yc - lat0) ** 2 + (((xc - lon0 + 180) % 360 - 180)) ** 2
         j, i = np.unravel_index(np.argmin(dist), dist.shape)
         d = dist[j, i]
         if best is None or d < best[0]:
-            best = (d, tile, j, i)
-    _, tile, j, i = best
-    return tile, j, i
+            best = (d, facet, j, i)
+    _, facet, j, i = best
+    return facet, j, i
 
 
-def read_timeseries(name, tile, j, i, k):
+def read_timeseries(name, facet, j, i, k):
     vals = []
     for step in range(NSTEPS):
-        path = os.path.join(RUN_DIR, f"{name}.{step:010d}.{tile:03d}.001.data")
-        raw = np.fromfile(path, dtype=">f4")
-        cube = raw.reshape(TILE_NZ, TILE_NY, TILE_NX)
-        vals.append(cube[k, j, i])
+        path = os.path.join(RUN_DIR, f"{name}.{step:010d}.data")
+        facets = read_global_facets(path, nlev=NLEV)
+        vals.append(facets[facet][k, j, i])
     return np.array(vals)
 
 
-def is_wet(tile, j, i, k):
-    raw = np.fromfile(os.path.join(RUN_DIR, f"hFacC.{tile:03d}.001.data"), dtype=">f4")
-    cube = raw.reshape(TILE_NZ, TILE_NY, TILE_NX)
-    return cube[k, j, i] != 0.0
+def is_wet(hfacc_facets, facet, j, i, k):
+    return hfacc_facets[facet][k, j, i] != 0.0
 
 
-def make_timeseries_plot(name, units, out_filename):
+def make_timeseries_plot(xc_facets, yc_facets, hfacc_facets, name, units, out_filename):
     rc = np.fromfile(os.path.join(RUN_DIR, "RC.data"), dtype=">f4")
     days = np.arange(NSTEPS)
 
@@ -76,14 +107,14 @@ def make_timeseries_plot(name, units, out_filename):
     colors = plt.cm.viridis(np.linspace(0.15, 0.85, len(DEPTH_LEVELS)))
 
     for ax, (label, lat0, lon0) in zip(axes, LOCATIONS):
-        tile, j, i = find_tile_cell(lat0, lon0)
+        facet, j, i = find_facet_cell(xc_facets, yc_facets, lat0, lon0)
         for k, color in zip(DEPTH_LEVELS, colors):
-            if not is_wet(tile, j, i, k):
+            if not is_wet(hfacc_facets, facet, j, i, k):
                 continue
-            series = read_timeseries(name, tile, j, i, k)
+            series = read_timeseries(name, facet, j, i, k)
             depth_m = -rc[k]
             ax.plot(days, series, "-o", color=color, label=f"{depth_m:.0f} m")
-        ax.set_title(f"{label} ({lat0:+.0f},{lon0:+.0f}) -- tile {tile}, j={j}, i={i}",
+        ax.set_title(f"{label} ({lat0:+.0f},{lon0:+.0f}) -- facet {facet}, j={j}, i={i}",
                      fontsize=10)
         ax.set_ylabel(f"{name} ({units})")
         ax.legend(fontsize=8, loc="best")
@@ -100,13 +131,17 @@ def make_timeseries_plot(name, units, out_filename):
 
 
 def main():
-    print("Locations resolved to (tile, j, i):")
-    for label, lat0, lon0 in LOCATIONS:
-        tile, j, i = find_tile_cell(lat0, lon0)
-        print(f"  {label}: tile={tile}, j={j}, i={i}")
+    xc_facets = read_global_facets(os.path.join(RUN_DIR, "XC.data"))
+    yc_facets = read_global_facets(os.path.join(RUN_DIR, "YC.data"))
+    hfacc_facets = read_global_facets(os.path.join(RUN_DIR, "hFacC.data"), nlev=NLEV)
 
-    make_timeseries_plot("T", "degC", "T_timeseries_locations.png")
-    make_timeseries_plot("S", "psu", "S_timeseries_locations.png")
+    print("Locations resolved to (facet, j, i):")
+    for label, lat0, lon0 in LOCATIONS:
+        facet, j, i = find_facet_cell(xc_facets, yc_facets, lat0, lon0)
+        print(f"  {label}: facet={facet}, j={j}, i={i}")
+
+    make_timeseries_plot(xc_facets, yc_facets, hfacc_facets, "T", "degC", "T_timeseries_locations.png")
+    make_timeseries_plot(xc_facets, yc_facets, hfacc_facets, "S", "psu", "S_timeseries_locations.png")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,21 @@
+# GM+Redi package parameters -- real V4r6 scalar GM_PARM01 values
+# (Time-invariant-adjoint/v4r6/.../run_shelfice_v2_fixed_check/data.gmredi),
+# confirmed via the real confirmed-stable STIC run. GM_K3dGMFile/
+# GM_K3dRediFile are production-tuned per-column 3-D coefficient files
+# (xx_kapgm.effective.V4r5/xx_kapredi.effective.V4r5) from a real
+# optimization run -- no equivalent exists for LLC30's coarsened grid,
+# so they are deliberately omitted here (falls back to the uniform
+# scalar GM_background_K/GM_isopycK below, the documented default
+# behavior when no 3-D file is given) -- see HANDOFF.md.
+ &GM_PARM01
+  GM_Small_Number  = 1.D-20,
+  GM_slopeSqCutoff = 1.D+08,
+  GM_AdvForm         = .TRUE.,
+  GM_isopycK         = 1.D+3,
+  GM_background_K    = 1.D+3,
+  GM_maxSlope        = 4.D-3,
+  GM_taper_scheme    = 'stableGmAdjTap',
+  GM_Kmin_horiz      = 100.,
+  GM_Scrit           = 4.D-3,
+  GM_Sd              = 1.D-3,
+ &

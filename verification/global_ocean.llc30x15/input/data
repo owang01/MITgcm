@@ -45,7 +45,12 @@
  hFacInf=0.2,
  hFacSup=2.0,
  useRealFreshWaterFlux=.TRUE.,
- allowFreezing=.TRUE.,
+#-- Phase A (adjoint-experiment plan, see HANDOFF.md): now that
+#   pkg/seaice is compiled, model/src/config_check.F forbids
+#   allowFreezing=.TRUE. together with useSEAICE (seaice handles
+#   freezing physics itself) -- confirmed real V4r6 also sets this
+#   .FALSE. (input.V4r6.102/data).
+ allowFreezing=.FALSE.,
  hFacMin=.1,
  hFacMinDr=20.,
 #-- LLC30 bathymetry (preprocess/output/bathy/BATHY_LLC30.bin) is real*4;
@@ -53,7 +58,13 @@
 #   explicitly, but set the namelist-wide default to the same value for
 #   consistency (no other binary input file in this config needs 64-bit).
  readBinaryPrec=32,
-#useSingleCpuIO=.TRUE.,
+#-- Matches real V4r6's own input.V4r6.102/data: gathers/scatters all
+#   mdsio-based I/O (run/ output, pickup files) to/from a single global
+#   compact-LLC file per field instead of one file per tile (see
+#   HANDOFF.md). The READ side auto-detects whichever format is
+#   actually on disk, so this only governs what gets WRITTEN from now
+#   on; pre-existing per-tile files must be regenerated.
+ useSingleCpuIO=.TRUE.,
  plotLevel=0,
  &
 

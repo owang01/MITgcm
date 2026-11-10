@@ -15,8 +15,20 @@ run/ tile's own XC/YC center coordinates:
 
 Same dateline-seam-masking + corner-coordinate approach as
 plot_bathy_sanity.py / plot_T_snapshot.py.
+
+Phase A (adjoint-experiment plan, see HANDOFF.md): this config now sets
+useSingleCpuIO=.TRUE. (matching real V4r6), so run/ writes one GLOBAL
+file per field instead of 13 per-tile files. Per-tile corner/center
+grids are now sliced directly out of each facet's own GLOBAL (ny+1,nx+1)
+extended-corner array (built once per facet, see
+plot_ssh_map.py's extended_facet_corners design) -- since tiles within a
+facet are contiguous, this gives every internal tile-to-tile edge for
+free (no neighbor-tile lookup needed at all, unlike the old per-tile
+Y_STACK_NEXT/X_STACK_NEXT workaround); only each FACET's own outer edge
+still needs the facet-to-facet neighbor-borrow / extrapolation logic.
 """
 import os
+import sys
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -25,9 +37,21 @@ import cartopy.crs as ccrs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN_DIR = os.path.abspath(os.path.join(HERE, "..", "run"))
+sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "preprocess")))
+import coarsen_llc90_to_llc30 as base  # noqa: E402
 
 NTILES = 13
 TILE_NY, TILE_NX = 30, 30
+
+FACET_DIMS = {
+    1: (90, 30),
+    2: (90, 30),
+    3: (30, 30),
+    4: (30, 90),
+    5: (30, 90),
+}
+FACET_TILE_RANGE = {1: (1, 3), 2: (4, 6), 3: (7, 7), 4: (8, 10), 5: (11, 13)}
+FACET_STACK_AXIS = {1: "y", 2: "y", 3: None, 4: "x", 5: "x"}
 
 TILE_TO_FACET = {
     1: 1, 2: 1, 3: 1,
@@ -46,74 +70,103 @@ FACET_COLORS = {
 }
 
 
-def read_tile_centers(tile):
-    xc = np.fromfile(os.path.join(RUN_DIR, f"XC.{tile:03d}.001.data"), dtype=">f4").reshape(
-        TILE_NY, TILE_NX
-    )
-    yc = np.fromfile(os.path.join(RUN_DIR, f"YC.{tile:03d}.001.data"), dtype=">f4").reshape(
-        TILE_NY, TILE_NX
-    )
-    return xc, yc
+def read_global_facets(path):
+    """Read a GLOBAL run/<name>.data 2-D field (real*4 big-endian) and
+    split into its 5 native-shaped facets -- flat concatenation of each
+    facet's own native (ny,nx) row-major block, same convention as
+    plot_bathy_sanity.py's read_bathy_facets."""
+    raw = np.fromfile(path, dtype=">f4")
+    per_level = 390 * 30
+    assert raw.size == per_level, (path, raw.size, per_level)
+    facets = {}
+    offset = 0
+    for facet in (1, 2, 3, 4, 5):
+        ny, nx = FACET_DIMS[facet]
+        n = ny * nx
+        facets[facet] = raw[offset:offset + n].reshape(ny, nx)
+        offset += n
+    assert offset == per_level
+    return facets
 
 
-# Which tiles stack north-south (y) or west-east (x) within the same LLC
-# facet (tile 7, the Arctic cap, has no same-facet neighbor). Needed
-# because reading each tile's XG/YG alone only gives its south-west
-# corners, (ny,nx) extent -- the missing "+1" north row (y-stacked
-# facets) or east column (x-stacked facets) must come from the adjacent
-# tile's own true edge, NOT a linear extrapolation: this is a
-# curvilinear grid, so extrapolating from a tile's own last two rows/
-# columns measurably overshoots/undershoots the true neighboring edge
-# (confirmed empirically: up to ~0.36 deg off at the tile2/tile3 seam),
-# leaving a thin real gap between tiles that shows up as a faint white
-# line through the rendered map -- not a plotting/antialiasing artifact.
-Y_STACK_NEXT = {1: 2, 2: 3, 4: 5, 5: 6}   # tile -> its northward same-facet neighbor
-X_STACK_NEXT = {9: 10, 11: 12, 12: 13}    # tile -> its eastward same-facet neighbor
+def _edge_adjacent_line(arr, edge):
+    if edge == "N":
+        return arr[-1, :]
+    if edge == "S":
+        return arr[0, :]
+    if edge == "E":
+        return arr[:, -1]
+    if edge == "W":
+        return arr[:, 0]
+    raise ValueError(edge)
 
 
-def read_tile_corners(tile):
-    xg = np.fromfile(os.path.join(RUN_DIR, f"XG.{tile:03d}.001.data"), dtype=">f4").reshape(
-        TILE_NY, TILE_NX
-    )
-    yg = np.fromfile(os.path.join(RUN_DIR, f"YG.{tile:03d}.001.data"), dtype=">f4").reshape(
-        TILE_NY, TILE_NX
-    )
-    # XG/YG model output is the south-west corner of each cell, (ny,nx)
-    # extent -- pad on the high-index side. Where a same-facet neighbor
-    # exists, use ITS true edge (see Y_STACK_NEXT/X_STACK_NEXT above);
-    # only a genuinely open facet boundary uses a linear extrapolation.
+def extended_facet_corners(xg_facets, yg_facets, facet):
+    """See plot_ssh_map.py's identical helper for the full design
+    rationale -- returns (ny+1,nx+1) corner arrays spanning the WHOLE
+    facet."""
+    xg, yg = xg_facets[facet], yg_facets[facet]
     xg_ext = np.pad(xg, ((0, 1), (0, 1)), mode="edge")
     yg_ext = np.pad(yg, ((0, 1), (0, 1)), mode="edge")
 
-    if tile in Y_STACK_NEXT:
-        nxg = np.fromfile(
-            os.path.join(RUN_DIR, f"XG.{Y_STACK_NEXT[tile]:03d}.001.data"), dtype=">f4"
-        ).reshape(TILE_NY, TILE_NX)
-        nyg = np.fromfile(
-            os.path.join(RUN_DIR, f"YG.{Y_STACK_NEXT[tile]:03d}.001.data"), dtype=">f4"
-        ).reshape(TILE_NY, TILE_NX)
-        xg_ext[-1, :-1] = nxg[0, :]
-        yg_ext[-1, :-1] = nyg[0, :]
-    else:
+    res_n = base._facet_neighbor(facet, "N")
+    if res_n is None:
         xg_ext[-1, :-1] = xg[-1, :] + (xg[-1, :] - xg[-2, :])
         yg_ext[-1, :-1] = yg[-1, :] + (yg[-1, :] - yg[-2, :])
-
-    if tile in X_STACK_NEXT:
-        nxg = np.fromfile(
-            os.path.join(RUN_DIR, f"XG.{X_STACK_NEXT[tile]:03d}.001.data"), dtype=">f4"
-        ).reshape(TILE_NY, TILE_NX)
-        nyg = np.fromfile(
-            os.path.join(RUN_DIR, f"YG.{X_STACK_NEXT[tile]:03d}.001.data"), dtype=">f4"
-        ).reshape(TILE_NY, TILE_NX)
-        xg_ext[:-1, -1] = nxg[:, 0]
-        yg_ext[:-1, -1] = nyg[:, 0]
     else:
+        nf, ne, rev = res_n
+        nxg_line = _edge_adjacent_line(xg_facets[nf], ne)
+        nyg_line = _edge_adjacent_line(yg_facets[nf], ne)
+        if rev:
+            nxg_line = nxg_line[::-1]
+            nyg_line = nyg_line[::-1]
+        xg_ext[-1, :-1] = nxg_line
+        yg_ext[-1, :-1] = nyg_line
+
+    res_e = base._facet_neighbor(facet, "E")
+    if res_e is None:
         xg_ext[:-1, -1] = xg[:, -1] + (xg[:, -1] - xg[:, -2])
         yg_ext[:-1, -1] = yg[:, -1] + (yg[:, -1] - yg[:, -2])
+    else:
+        nf, ne, rev = res_e
+        nxg_line = _edge_adjacent_line(xg_facets[nf], ne)
+        nyg_line = _edge_adjacent_line(yg_facets[nf], ne)
+        if rev:
+            nxg_line = nxg_line[::-1]
+            nyg_line = nyg_line[::-1]
+        xg_ext[:-1, -1] = nxg_line
+        yg_ext[:-1, -1] = nyg_line
 
     xg_ext[-1, -1] = xg_ext[-1, -2] + (xg_ext[-1, -2] - xg_ext[-1, -3])
     yg_ext[-1, -1] = yg_ext[-1, -2] + (yg_ext[-1, -2] - yg_ext[-1, -3])
     return xg_ext, yg_ext
+
+
+def tile_corner_block(ext_corners, facet, tile):
+    """ext_corners: (ny+1,nx+1) full-facet extended corner array. Returns
+    the (31,31) corner sub-block for `tile` -- tiles within a facet are
+    contiguous along FACET_STACK_AXIS, so adjacent tiles' corner blocks
+    naturally share their boundary row/column (a 1-cell overlap), no
+    neighbor lookup needed."""
+    t0, t1 = FACET_TILE_RANGE[facet]
+    axis = FACET_STACK_AXIS[facet]
+    if axis is None:
+        return ext_corners
+    i = tile - t0
+    if axis == "y":
+        return ext_corners[i * TILE_NY:(i + 1) * TILE_NY + 1, :]
+    return ext_corners[:, i * TILE_NX:(i + 1) * TILE_NX + 1]
+
+
+def tile_center_block(center_facet, facet, tile):
+    t0, t1 = FACET_TILE_RANGE[facet]
+    axis = FACET_STACK_AXIS[facet]
+    if axis is None:
+        return center_facet
+    i = tile - t0
+    if axis == "y":
+        return center_facet[i * TILE_NY:(i + 1) * TILE_NY, :]
+    return center_facet[:, i * TILE_NX:(i + 1) * TILE_NX]
 
 
 def dateline_seam_mask(xg):
@@ -136,6 +189,15 @@ def robust_center(xc, yc):
 
 
 def main():
+    xg_facets = read_global_facets(os.path.join(RUN_DIR, "XG.data"))
+    yg_facets = read_global_facets(os.path.join(RUN_DIR, "YG.data"))
+    xc_facets = read_global_facets(os.path.join(RUN_DIR, "XC.data"))
+    yc_facets = read_global_facets(os.path.join(RUN_DIR, "YC.data"))
+
+    ext_corners = {
+        f: extended_facet_corners(xg_facets, yg_facets, f) for f in (1, 2, 3, 4, 5)
+    }
+
     fig = plt.figure(figsize=(14, 7))
     ax = plt.axes(projection=ccrs.Robinson())
     ax.set_global()
@@ -145,7 +207,9 @@ def main():
     for tile in range(1, NTILES + 1):
         facet = TILE_TO_FACET[tile]
         color = FACET_COLORS[facet]
-        xg, yg = read_tile_corners(tile)
+        xg_ext, yg_ext = ext_corners[facet]
+        xg = tile_corner_block(xg_ext, facet, tile)
+        yg = tile_corner_block(yg_ext, facet, tile)
         seam = dateline_seam_mask(xg)
         fill = np.ma.masked_where(seam, np.ones((TILE_NY, TILE_NX)))
 
@@ -163,7 +227,8 @@ def main():
         )
         legend_handles[facet] = mesh
 
-        xc, yc = read_tile_centers(tile)
+        xc = tile_center_block(xc_facets[facet], facet, tile)
+        yc = tile_center_block(yc_facets[facet], facet, tile)
         lon, lat = robust_center(xc, yc)
         ax.text(
             lon, lat, str(tile),

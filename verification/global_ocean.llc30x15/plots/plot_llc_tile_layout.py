@@ -31,6 +31,19 @@ RUN_DIR = os.path.abspath(os.path.join(HERE, "..", "run"))
 
 TILE_NY, TILE_NX, TILE_NZ = 30, 30, 15
 
+# Per-facet LLC30 native (ny, nx) dims (facets 1,2 tall; 3 square/Arctic
+# cap; 4,5 wide) -- same convention as plot_bathy_sanity.py's FACET_DIMS.
+FACET_DIMS = {
+    1: (90, 30),
+    2: (90, 30),
+    3: (30, 30),
+    4: (30, 90),
+    5: (30, 90),
+}
+# facet -> our LLC30 tile numbers it's made of (tile = one 30x30 block).
+FACET_TILE_RANGE = {1: (1, 3), 2: (4, 6), 3: (7, 7), 4: (8, 10), 5: (11, 13)}
+FACET_STACK_AXIS = {1: "y", 2: "y", 3: None, 4: "x", 5: "x"}
+
 # 5x5 grid slot -> ecco tile index (0..12), -1 = empty. Copied verbatim
 # from ecco_v4_py.tile_plot.plot_tiles's layout='llc' tile_order.
 TILE_ORDER = np.array([
@@ -46,10 +59,52 @@ NROWS, NCOLS = 5, 5
 ECCO_TO_OURS = {i: i + 1 for i in range(13)}
 
 
+def read_hfacc_facets():
+    """Read the GLOBAL run/hFacC.data (useSingleCpuIO=.TRUE., real*4
+    big-endian -- see HANDOFF.md). Per level, the horizontal layout is a
+    FLAT CONCATENATION of each facet's own native (ny,nx) row-major
+    block (NOT a uniform (390,30) 2-D array -- same convention as
+    plot_bathy_sanity.py's read_bathy_facets), so each level must be
+    sliced facet-by-facet before any reshape."""
+    path = os.path.join(RUN_DIR, "hFacC.data")
+    raw = np.fromfile(path, dtype=">f4")
+    per_level = 390 * 30
+    expected = TILE_NZ * per_level
+    assert raw.size == expected, f"expected {expected} values, got {raw.size}"
+    levels = raw.reshape(TILE_NZ, per_level)
+
+    facets = {f: np.empty((TILE_NZ,) + FACET_DIMS[f], dtype=raw.dtype) for f in (1, 2, 3, 4, 5)}
+    offset = 0
+    for facet in (1, 2, 3, 4, 5):
+        ny, nx = FACET_DIMS[facet]
+        n = ny * nx
+        facets[facet] = levels[:, offset:offset + n].reshape(TILE_NZ, ny, nx)
+        offset += n
+    assert offset == per_level
+    return facets
+
+
+def split_facet_into_tiles(facet_arr, facet):
+    """facet_arr: (nlev,ny,nx) at native facet resolution. Returns dict
+    tile_number -> (nlev,30,30) block, per FACET_TILE_RANGE/
+    FACET_STACK_AXIS -- same tile-splitting convention as
+    preprocess/build_llc30_pickup.py's split_facet_into_tiles."""
+    t0, t1 = FACET_TILE_RANGE[facet]
+    axis = FACET_STACK_AXIS[facet]
+    if axis is None:
+        return {t0: facet_arr}
+    n_tiles = t1 - t0 + 1
+    chunks = np.split(facet_arr, n_tiles, axis=-2 if axis == "y" else -1)
+    return {t: chunks[i] for i, t in enumerate(range(t0, t1 + 1))}
+
+
 def read_land_mask(our_tile):
-    raw = np.fromfile(os.path.join(RUN_DIR, f"hFacC.{our_tile:03d}.001.data"), dtype=">f4")
-    cube = raw.reshape(TILE_NZ, TILE_NY, TILE_NX)
-    return cube[0] == 0.0  # True where land
+    facets = read_hfacc_facets()
+    for facet in (1, 2, 3, 4, 5):
+        tiles = split_facet_into_tiles(facets[facet], facet)
+        if our_tile in tiles:
+            return tiles[our_tile][0] == 0.0  # True where land
+    raise ValueError(our_tile)
 
 
 def main():

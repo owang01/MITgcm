@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
-"""Build a from-scratch, 13-tile, 15-level, named-field LLC30 pickup file
-(`pickup.0000000000.<tile>.001.data/.meta`), so this config's cold start
-can switch from `hydrogThetaFile`/`hydrogSaltFile`/`pSurfInitFile` over to
-MITgcm's real `pickupSuff` mechanism -- the user explicitly chose this
-over the simpler `pSurfInitFile`-only route (see HANDOFF.md's "Pickup-file
-research" section) specifically to exercise MITgcm's pickup-read code
-path, and explicitly wants every field (not just Theta/Salt/Eta) to match
-real LLC90/V4r6 as closely as possible -- i.e. NOT a cold start with zero
-velocity.
+"""Build a from-scratch, GLOBAL (single-file, not per-tile), 15-level,
+named-field LLC30 pickup file (`pickup.0000000000.data/.meta`), so this
+config's cold start can switch from `hydrogThetaFile`/`hydrogSaltFile`/
+`pSurfInitFile` over to MITgcm's real `pickupSuff` mechanism -- the user
+explicitly chose this over the simpler `pSurfInitFile`-only route (see
+HANDOFF.md's "Pickup-file research" section) specifically to exercise
+MITgcm's pickup-read code path, and explicitly wants every field (not
+just Theta/Salt/Eta) to match real LLC90/V4r6 as closely as possible --
+i.e. NOT a cold start with zero velocity.
+
+Writes a SINGLE global file per pickup (matching real V4r6's own
+pickup.0000000001.data/.meta convention exactly, confirmed byte-for-byte
+against that real file's .meta), not 13 per-tile files -- this config's
+`input/data` now sets `useSingleCpuIO=.TRUE.` (also matching real V4r6),
+which requires every mdsio-read file (including pickups) to be a global
+file; there is no tiled-file fallback once that flag is set (confirmed
+in pkg/mdsio/mdsio_read_field.F's `useSingleCPUIO .AND. globFile.GE.0`
+branch, which only ever opens `dataFName` -- the global name -- and
+STOPs if that specific file is missing, with no per-tile retry). See
+HANDOFF.md's "global-file I/O" section for the full investigation.
 
 Required fields (confirmed by reading model/src/read_pickup.F/
 check_pickup.F for this config's exact CPP/runtime flags -- see
@@ -84,6 +95,7 @@ INPUT_DIR = os.path.join(SCRIPT_DIR, "..", "input")
 RUN_DIR = os.path.join(SCRIPT_DIR, "..", "run")
 LLC30_DATA_PATH = os.path.join(INPUT_DIR, "data")
 LLC30_BATHY_PATH = os.path.join(INPUT_DIR, "BATHY_LLC30.bin")
+ICE_DRAFT_PATH = os.path.join(INPUT_DIR, "ICE_DRAFT_LLC30.bin")
 THETA_LLC30_PATH = os.path.join(INPUT_DIR, "THETA_LLC30_INIT.bin")
 SALT_LLC30_PATH = os.path.join(INPUT_DIR, "SALT_LLC30_INIT.bin")
 
@@ -210,6 +222,51 @@ def compact_coarse_to_tiles(compact_arr):
     return {t: blocks[0] for t, blocks in tiles.items()}
 
 
+def tiles_to_compact_coarse(tiles_dict):
+    """Inverse of compact_coarse_to_tiles: dict tile(1..13) -> (30,30) or
+    (nlev,30,30) block -> (COMPACT_COARSE_NY,COMPACT_COARSE_NX) or
+    (nlev,COMPACT_COARSE_NY,COMPACT_COARSE_NX) compact array. Generalizes
+    the inline tile-reassembly logic originally written just for
+    AngleCS/AngleSN (_llc30_angle_cos_sin_compact's old _tiles_to_compact
+    helper) to any tiled field, now needed for the global-file pickup
+    writer too (see module docstring)."""
+    sample = tiles_dict[1]
+    is_3d = sample.ndim == 3
+
+    def _tiles_to_facets(nlev_index=None):
+        facets = {}
+        for facet in range(1, 6):
+            t0, t1 = FACET_TILE_RANGE[facet]
+            axis = FACET_STACK_AXIS[facet]
+
+            def _get(t):
+                block = tiles_dict[t]
+                return block[nlev_index] if nlev_index is not None else block
+
+            if axis is None:
+                facets[facet] = _get(t0)
+            elif axis == "y":
+                facets[facet] = np.concatenate(
+                    [_get(t) for t in range(t0, t1 + 1)], axis=0
+                )
+            else:
+                facets[facet] = np.concatenate(
+                    [_get(t) for t in range(t0, t1 + 1)], axis=1
+                )
+        return facets
+
+    if not is_3d:
+        facets = _tiles_to_facets()
+        return base.assemble_facets_into_compact(facets)
+
+    nlev = sample.shape[0]
+    levels = []
+    for k in range(nlev):
+        facets_k = _tiles_to_facets(nlev_index=k)
+        levels.append(base.assemble_facets_into_compact(facets_k))
+    return np.stack(levels, axis=0)
+
+
 # ===========================================================================
 # Scalar (Theta/Salt/EtaN/dEtaHdt/EtaH) loading
 # ===========================================================================
@@ -290,21 +347,22 @@ def load_llc90_angle_cos_sin():
     return cos_c, sin_c
 
 
-def load_llc30_angle_cos_sin_tiles():
-    """Returns (cos_tiles, sin_tiles), each dict tile(1..13) -> (30,30)
-    real*4 array, read directly from this config's own already-committed
-    run/AngleCS.<tile>.001.data / AngleSN.<tile>.001.data model output."""
-    cos_tiles, sin_tiles = {}, {}
-    for tile in range(1, 14):
-        cpath = os.path.join(RUN_DIR, f"AngleCS.{tile:03d}.001.data")
-        spath = os.path.join(RUN_DIR, f"AngleSN.{tile:03d}.001.data")
-        cos_raw = np.fromfile(cpath, dtype=">f4").astype(np.float64)
-        sin_raw = np.fromfile(spath, dtype=">f4").astype(np.float64)
-        assert cos_raw.size == TILE_NY * TILE_NX, (cpath, cos_raw.size)
-        assert sin_raw.size == TILE_NY * TILE_NX, (spath, sin_raw.size)
-        cos_tiles[tile] = cos_raw.reshape(TILE_NY, TILE_NX)
-        sin_tiles[tile] = sin_raw.reshape(TILE_NY, TILE_NX)
-    return cos_tiles, sin_tiles
+def load_llc30_angle_cos_sin_compact():
+    """Returns (cos_compact, sin_compact), each (COMPACT_COARSE_NY,
+    COMPACT_COARSE_NX) real*4 array, read directly from this config's own
+    already-committed GLOBAL run/AngleCS.data / AngleSN.data model
+    output (useSingleCpuIO=.TRUE. -- see module docstring)."""
+    cpath = os.path.join(RUN_DIR, "AngleCS.data")
+    spath = os.path.join(RUN_DIR, "AngleSN.data")
+    expected = COMPACT_COARSE_NY * COMPACT_COARSE_NX
+    cos_raw = np.fromfile(cpath, dtype=">f4").astype(np.float64)
+    sin_raw = np.fromfile(spath, dtype=">f4").astype(np.float64)
+    assert cos_raw.size == expected, (cpath, cos_raw.size, expected)
+    assert sin_raw.size == expected, (spath, sin_raw.size, expected)
+    return (
+        cos_raw.reshape(COMPACT_COARSE_NY, COMPACT_COARSE_NX),
+        sin_raw.reshape(COMPACT_COARSE_NY, COMPACT_COARSE_NX),
+    )
 
 
 # ===========================================================================
@@ -535,40 +593,14 @@ def remap_velocity_pair_llc90_to_llc30(uvel_idx0, vvel_idx0):
     )
 
 
-_llc30_angle_compact_cache = None
-
-
 def _llc30_angle_cos_sin_compact():
-    """Assemble LLC30's own per-tile AngleCS/AngleSN into compact
-    (COMPACT_COARSE_NY, COMPACT_COARSE_NX) form, for use by
-    rotate_en_to_xy (which operates on whole-compact arrays like every
-    other scalar field in this pipeline)."""
-    global _llc30_angle_compact_cache
-    if _llc30_angle_compact_cache is not None:
-        return _llc30_angle_compact_cache
-    cos_tiles, sin_tiles = load_llc30_angle_cos_sin_tiles()
-
-    def _tiles_to_compact(tiles):
-        facets = {}
-        for facet in range(1, 6):
-            t0, t1 = FACET_TILE_RANGE[facet]
-            axis = FACET_STACK_AXIS[facet]
-            if axis is None:
-                facets[facet] = tiles[t0]
-            elif axis == "y":
-                facets[facet] = np.concatenate(
-                    [tiles[t] for t in range(t0, t1 + 1)], axis=0
-                )
-            else:
-                facets[facet] = np.concatenate(
-                    [tiles[t] for t in range(t0, t1 + 1)], axis=1
-                )
-        return base.assemble_facets_into_compact(facets)
-
-    cos_compact = _tiles_to_compact(cos_tiles)
-    sin_compact = _tiles_to_compact(sin_tiles)
-    _llc30_angle_compact_cache = (cos_compact, sin_compact)
-    return _llc30_angle_compact_cache
+    """LLC30's own AngleCS/AngleSN in compact (COMPACT_COARSE_NY,
+    COMPACT_COARSE_NX) form, for use by rotate_en_to_xy (which operates
+    on whole-compact arrays like every other scalar field in this
+    pipeline). Thin wrapper kept for call-site compatibility -- the
+    global run/AngleCS.data/AngleSN.data read already returns compact
+    form directly, no tile-reassembly needed anymore."""
+    return load_llc30_angle_cos_sin_compact()
 
 
 # ===========================================================================
@@ -593,20 +625,30 @@ def _parse_hfac_params():
 
 def build_llc30_hfac_masks():
     """Derive LLC30's own hFacC/hFacW/hFacS BOOLEAN (wet/dry) masks from
-    ../input/BATHY_LLC30.bin + ../input/data's delR/hFacMin/hFacMinDr,
-    replicating model/src/ini_masks_etc.F's EXACT wet-cell criterion in
-    Python (an INDEPENDENT check, not calling the Fortran) -- including
-    the hFacMin/hFacMinDr partial-cell-thinning step (hFac_loc <
+    ../input/BATHY_LLC30.bin + ../input/ICE_DRAFT_LLC30.bin +
+    ../input/data's delR/hFacMin/hFacMinDr, replicating
+    model/src/ini_masks_etc.F's EXACT wet-cell criterion in Python (an
+    INDEPENDENT check, not calling the Fortran) -- including the
+    hFacMin/hFacMinDr partial-cell-thinning step (hFac_loc <
     hFacMnSz*0.5 -> dry), which a naive `rF[k] > seafloor` test (as used
     by coarsen_initial_ts_to_llc30.py's build_fine_wet_mask, a
     deliberately simpler mask for THAT script's different purpose) does
-    NOT apply and was confirmed, by direct cross-check against this
-    config's own real run/hFacC.*.001.data, to disagree with the model's
-    actual mask at 28 boundary-sliver cells where the partial-cell
-    fraction falls below the hFacMin/hFacMinDr threshold. The second
-    (Ro_surf-based) pass ini_masks_etc.F also applies is a no-op for
-    this config (Ro_surf=0 everywhere, no ice shelf/shelfice package) --
-    confirmed by this cross-check itself requiring exact agreement.
+    NOT apply.
+
+    Phase A update (adjoint-experiment plan, see HANDOFF.md): this
+    config now compiles pkg/shelfice/pkg/steep_icecavity with a real
+    nonzero ICE_DRAFT_LLC30.bin, so Ro_surf is NO LONGER 0 everywhere --
+    `model/src/ini_depths.F` initializes Ro_surf=rF(1)=0, then
+    `SHELFICE_INIT_DEPTHS` lowers it to the ice draft wherever
+    SHELFICEtopoFile is nonzero (`rSurfC = MIN(rSurfC, R_shelfIce)`,
+    confirmed in shelfice_init_depths.F). The SECOND (Ro_surf-based)
+    hFacC pass `ini_masks_etc.F` applies -- previously skipped here as
+    a no-op -- is now REQUIRED; implemented below exactly per that
+    file's own two-pass algorithm (first pass vs. R_low/bathymetry,
+    re-derive R_low from the thinned hFacC, second pass vs. Ro_surf/ice
+    draft, re-derive Ro_surf from the re-thinned hFacC). Confirmed by
+    direct cross-check against this config's own real GLOBAL
+    run/hFacC.data output (see cross_check_hfac_against_model_output).
 
     hFacW/hFacS use the simpler min-of-adjacent-hFacC convention
     (useMin4hFacEdges=.TRUE. style) rather than this config's actual
@@ -621,73 +663,158 @@ def build_llc30_hfac_masks():
     assert bathy_raw.size == expected, (LLC30_BATHY_PATH, bathy_raw.size, expected)
     bathy_compact = bathy_raw.reshape(COMPACT_COARSE_NY, COMPACT_COARSE_NX)
 
+    ice_draft_raw = np.fromfile(ICE_DRAFT_PATH, dtype=">f4").astype(np.float64)
+    assert ice_draft_raw.size == expected, (ICE_DRAFT_PATH, ice_draft_raw.size, expected)
+    ice_draft_compact = ice_draft_raw.reshape(COMPACT_COARSE_NY, COMPACT_COARSE_NX)
+    # Ro_surf: rF(1)=0 everywhere, lowered to the (already-negative) ice
+    # draft wherever nonzero -- matches shelfice_init_depths.F's
+    # `rSurfC = MIN(rSurfC, R_shelfIce)` exactly (both are <= 0, so MIN
+    # picks the ice draft whenever it's present).
+    ro_surf0 = np.where(ice_draft_compact != 0.0, ice_draft_compact, 0.0)
+
     delR15 = ts.parse_llc30_delR()
     rF15 = ts.build_depth_interfaces(delR15)
     hFacMin, hFacMinDr = _parse_hfac_params()
     land = bathy_compact == 0.0
 
-    # Keep the FRACTIONAL hFacC (not boolean yet) -- needed to compute
-    # the adjusted R_low (bottom position after hFacMin/hFacMinDr
-    # thinning) that ini_masks_etc.F's own rLowW/rSurfW formula uses for
-    # hFacW/hFacS. This config has Ro_surf=0 everywhere (no ice shelf),
-    # so only the first (R_low-based) hFacC pass is needed -- confirmed
-    # by this function's own hFacC output already matching run/hFacC.*
-    # exactly using just this first pass.
+    # --- Pass 1 (vs. R_low/bathymetry) ---
     hfacC_frac = np.zeros((NLEV30, COMPACT_COARSE_NY, COMPACT_COARSE_NX))
     for k in range(NLEV30):
         drF_k = delR15[k]
         hFacMnSz = max(hFacMin, min(hFacMinDr / drF_k, 1.0))
         hfac_loc = (rF15[k] - bathy_compact) / drF_k
         hfac_loc = np.clip(hfac_loc, 0.0, 1.0)
-        wet = (hfac_loc >= hFacMnSz * 0.5) & (~land)
+        # ini_masks_etc.F's pass-1 ALSO closes a cell if R_low>=Ro_surf
+        # (a column entirely above the ice draft / entirely dry).
+        wet = (hfac_loc >= hFacMnSz * 0.5) & (~land) & (bathy_compact < ro_surf0)
         hfacC_frac[k] = np.where(wet, np.maximum(hfac_loc, hFacMnSz), 0.0)
 
+    # Re-derive R_low from the pass-1-thinned hFacC (ini_masks_etc.F:
+    # "Re-calculate lower-R Boundary position, taking into account hFacC").
+    r_low_adj = rF15[0] - np.sum(delR15[:, None, None] * hfacC_frac, axis=0)
+
+    # --- Pass 2 (vs. Ro_surf/ice draft): remove the part ABOVE Ro_surf ---
+    hfacC_frac2 = np.zeros_like(hfacC_frac)
+    for k in range(NLEV30):
+        drF_k = delR15[k]
+        hFacMnSz = max(hFacMin, min(hFacMinDr / drF_k, 1.0))
+        hfac_loc = (rF15[k] - ro_surf0) / drF_k
+        hfac_loc = hfacC_frac[k] - np.maximum(hfac_loc, 0.0)
+        hfac_loc = np.maximum(hfac_loc, 0.0)
+        hfacC_frac2[k] = np.where(
+            hfac_loc < hFacMnSz * 0.5, 0.0, np.maximum(hfac_loc, hFacMnSz)
+        )
+    hfacC_frac = hfacC_frac2
     hfacC_compact = hfacC_frac > 0.0
 
-    # R_low adjusted for hFacC thinning (ini_masks_etc.F: "Re-calculate
-    # lower-R Boundary position, taking into account hFacC" -- rF[0]=0
-    # is this config's domain top since usingZCoords with no atmosphere).
-    r_low_adj = -np.sum(delR15[:, None, None] * hfacC_frac, axis=0)
+    # Re-derive Ro_surf from the pass-2-thinned hFacC, for use in the
+    # rSurfW/rSurfS formula below (ini_masks_etc.F: "Re-calculate
+    # Reference surface position, taking into account hFacC").
+    ro_surf_adj = r_low_adj + np.sum(delR15[:, None, None] * hfacC_frac, axis=0)
 
     # rLowW/rSurfW: MAX(R_low(i-1),R_low(i)) / MIN(Ro_surf(i-1),Ro_surf(i))
-    # at U points; Ro_surf=0 everywhere (no ice shelf) so rSurfW=0.
-    # West-face (i-1 neighbor) needs the facet-seam-aware neighbor column
-    # for tile/facet boundary columns -- same topology as the velocity
-    # fix, but a scalar value (no rotation needed, just a borrow).
+    # at U points. West-face (i-1 neighbor) needs the facet-seam-aware
+    # neighbor column for tile/facet boundary columns -- same topology
+    # as the velocity un-stagger fix, but a scalar value (no rotation
+    # needed, just a borrow).
     r_low_w, r_low_s = _rlow_w_s_with_seam_fix(r_low_adj)
+    r_surf_w, r_surf_s = _rsurf_w_s_with_seam_fix(ro_surf_adj)
 
     hfacC_tiles = compact_coarse_to_tiles(hfacC_compact)
     hfacW_tiles, hfacS_tiles = {}, {}
     rlowW_tiles = compact_coarse_to_tiles(r_low_w)
     rlowS_tiles = compact_coarse_to_tiles(r_low_s)
+    rsurfW_tiles = compact_coarse_to_tiles(r_surf_w)
+    rsurfS_tiles = compact_coarse_to_tiles(r_surf_s)
     for tile in range(1, 14):
         hfacW = np.zeros((NLEV30, TILE_NY, TILE_NX), dtype=bool)
         hfacS = np.zeros((NLEV30, TILE_NY, TILE_NX), dtype=bool)
         rLowW_tile = rlowW_tiles[tile]  # (30,30)
         rLowS_tile = rlowS_tiles[tile]
+        rSurfW_tile = rsurfW_tiles[tile]
+        rSurfS_tile = rsurfS_tiles[tile]
         for k in range(NLEV30):
             drF_k = delR15[k]
             hFacMnSz = max(hFacMin, min(hFacMinDr / drF_k, 1.0))
             hfac1 = np.clip((rF15[k] - rLowW_tile) / drF_k, None, 1.0)
             hfac1 = np.where(
-                (hfac1 < hFacMnSz * 0.5) | (rLowW_tile >= 0.0), 0.0,
+                (hfac1 < hFacMnSz * 0.5) | (rLowW_tile >= rSurfW_tile), 0.0,
                 np.maximum(hfac1, hFacMnSz)
             )
-            # rSurfW=0 everywhere (no ice shelf): subtract the "outside"
-            # part above the surface -- a no-op since hfac1 is already
-            # clipped to <=1 relative to rF[0]=0.
+            # Remove the part above rSurfW (mirrors hfacC's pass 2).
+            above = np.maximum((rF15[k] - rSurfW_tile) / drF_k, 0.0)
+            hfac1 = np.maximum(hfac1 - above, 0.0)
+            hfac1 = np.where(hfac1 < hFacMnSz * 0.5, 0.0, hfac1)
             hfacW[k] = hfac1 > 0.0
 
             hfac1s = np.clip((rF15[k] - rLowS_tile) / drF_k, None, 1.0)
             hfac1s = np.where(
-                (hfac1s < hFacMnSz * 0.5) | (rLowS_tile >= 0.0), 0.0,
+                (hfac1s < hFacMnSz * 0.5) | (rLowS_tile >= rSurfS_tile), 0.0,
                 np.maximum(hfac1s, hFacMnSz)
             )
+            above_s = np.maximum((rF15[k] - rSurfS_tile) / drF_k, 0.0)
+            hfac1s = np.maximum(hfac1s - above_s, 0.0)
+            hfac1s = np.where(hfac1s < hFacMnSz * 0.5, 0.0, hfac1s)
             hfacS[k] = hfac1s > 0.0
         hfacW_tiles[tile] = hfacW
         hfacS_tiles[tile] = hfacS
     return {tile: (hfacC_tiles[tile], hfacW_tiles[tile], hfacS_tiles[tile])
             for tile in range(1, 14)}
+
+
+def _rsurf_w_s_with_seam_fix(ro_surf_adj_compact):
+    """Same facet-seam-aware MIN-of-adjacent borrow as
+    _rlow_w_s_with_seam_fix, but for rSurfW/rSurfS = MIN (not MAX) of
+    the two adjacent Ro_surf values -- per ini_masks_etc.F's exact
+    rSurfW/rSurfS formula."""
+    by_facet = split_compact_coarse_into_facets(ro_surf_adj_compact)
+
+    def _neighbor_edge_adjacent(nf, ne):
+        arr = by_facet[nf]
+        if ne == "N":
+            return arr[-1, :]
+        elif ne == "S":
+            return arr[0, :]
+        elif ne == "E":
+            return arr[:, -1]
+        elif ne == "W":
+            return arr[:, 0]
+        raise ValueError(ne)
+
+    w_by_facet = {}
+    s_by_facet = {}
+    for facet in range(1, 6):
+        arr = by_facet[facet]
+        rSurfW = np.empty_like(arr)
+        rSurfS = np.empty_like(arr)
+        rSurfW[:, 1:] = np.minimum(arr[:, :-1], arr[:, 1:])
+        rSurfS[1:, :] = np.minimum(arr[:-1, :], arr[1:, :])
+
+        res_w = base._facet_neighbor(facet, "W")
+        if res_w is None:
+            rSurfW[:, 0] = arr[:, 0]
+        else:
+            nf, ne, rev = res_w
+            line = _neighbor_edge_adjacent(nf, ne)
+            line = line[::-1] if rev else line
+            rSurfW[:, 0] = np.minimum(line, arr[:, 0])
+
+        res_s = base._facet_neighbor(facet, "S")
+        if res_s is None:
+            rSurfS[0, :] = arr[0, :]
+        else:
+            nf, ne, rev = res_s
+            line = _neighbor_edge_adjacent(nf, ne)
+            line = line[::-1] if rev else line
+            rSurfS[0, :] = np.minimum(line, arr[0, :])
+
+        w_by_facet[facet] = rSurfW
+        s_by_facet[facet] = rSurfS
+
+    return (
+        base.assemble_facets_into_compact(w_by_facet),
+        base.assemble_facets_into_compact(s_by_facet),
+    )
 
 
 def _rlow_w_s_with_seam_fix(r_low_adj_compact):
@@ -753,27 +880,32 @@ def _rlow_w_s_with_seam_fix(r_low_adj_compact):
 
 def cross_check_hfac_against_model_output(masks):
     """Compare this script's own independently-derived hFacC/hFacW/hFacS
-    boolean masks against this config's own already-committed
-    run/hFacC.*.001.data (etc.) model output -- the model's own ACTUAL
-    masks (written by a prior mitgcmuv run), not an aggregated summary.
-    Asserts EXACT boolean (>0 vs ==0) agreement per the plan (a stronger
-    bar than the 5%-tolerance wet-fraction check elsewhere in this
-    pipeline, since these are the literal ground truth, not an
-    independently-aggregated comparison)."""
-    print("Cross-checking derived hFac masks against run/hFacC.*.001.data ...")
+    boolean masks against this config's own already-committed GLOBAL
+    run/hFacC.data (etc.) model output -- the model's own ACTUAL masks
+    (written by a prior mitgcmuv run with useSingleCpuIO=.TRUE., see
+    module docstring), not an aggregated summary. Asserts EXACT boolean
+    (>0 vs ==0) agreement per the plan (a stronger bar than the
+    5%-tolerance wet-fraction check elsewhere in this pipeline, since
+    these are the literal ground truth, not an independently-aggregated
+    comparison)."""
+    print("Cross-checking derived hFac masks against run/hFac{C,W,S}.data ...")
+    expected = NLEV30 * COMPACT_COARSE_NY * COMPACT_COARSE_NX
     for name, idx in (("hFacC", 0), ("hFacW", 1), ("hFacS", 2)):
+        path = os.path.join(RUN_DIR, f"{name}.data")
+        real = np.fromfile(path, dtype=">f4")
+        assert real.size == expected, (path, real.size, expected)
+        real = real.reshape(NLEV30, COMPACT_COARSE_NY, COMPACT_COARSE_NX)
+        real_wet_tiles = compact_coarse_to_tiles(real > 0.0)
         worst_mismatch = 0
         for tile in range(1, 14):
-            path = os.path.join(RUN_DIR, f"{name}.{tile:03d}.001.data")
-            real = np.fromfile(path, dtype=">f4").reshape(NLEV30, TILE_NY, TILE_NX)
-            real_wet = real > 0.0
+            real_wet = real_wet_tiles[tile]
             derived_wet = masks[tile][idx]
             mismatch = int(np.sum(real_wet != derived_wet))
             worst_mismatch = max(worst_mismatch, mismatch)
             assert mismatch == 0, (
                 f"{name} tile {tile}: {mismatch} cells disagree with "
-                f"run/{name}.{tile:03d}.001.data's real wet/dry mask -- "
-                f"derived mask does not match the model's own ACTUAL mask"
+                f"run/{name}.data's real wet/dry mask -- derived mask "
+                f"does not match the model's own ACTUAL mask"
             )
         print(f"  {name}: EXACT agreement across all 13 tiles (worst_mismatch={worst_mismatch}).")
 
@@ -794,6 +926,89 @@ def apply_mask_and_assert(field_tiles, hfac_tiles, mask_key, field_name):
 
 
 # ===========================================================================
+# pkg/seaice's own real pickup fields (Phase A, see HANDOFF.md) --
+# siTICE/siAREA/siHEFF/siHSNOW (plain 2-D scalars) and siUICE/siVICE
+# (grid-relative vector components on the SAME C-grid U/V convention as
+# Uvel/Vvel, confirmed in pkg/seaice/SEAICE.h: "UICE ... at ... C-grid
+# U point", "VICE ... at ... C-grid V point"), real, from the same
+# pickup_seaice.0000000001.data source identified in the plan. Real
+# source field order (confirmed earlier this session):
+#   siTICE, siAREA, siHEFF, siHSNOW, siUICE, siVICE
+# (6 stacked 2-D records, compact LLC90 (1170,90), real*8 big-endian).
+# ===========================================================================
+
+SEAICE_PICKUP_SRC = (
+    "/ecco_nfs_1/owang/projects/ECCO/llc90/v4/release6/PO.DAAC/"
+    "ancillary_data/ancillary_data_orig/input_init/"
+    "pickup_seaice.0000000001.data"
+)
+SEAICE_FIELD_ORDER = ["siTICE", "siAREA", "siHEFF", "siHSNOW", "siUICE", "siVICE"]
+SI_TICE_REC, SI_AREA_REC, SI_HEFF_REC, SI_HSNOW_REC, SI_UICE_REC, SI_VICE_REC = range(6)
+
+
+def read_seaice_2d_record(record_index):
+    """Read one 2-D record from the real pickup_seaice source (compact
+    LLC90 (1170,90), real*8 big-endian). Returns (COMPACT_NY,COMPACT_NX)."""
+    rec_elems = COMPACT_NX * COMPACT_NY
+    rec_bytes = rec_elems * 8
+    with open(SEAICE_PICKUP_SRC, "rb") as fh:
+        fh.seek(record_index * rec_bytes)
+        raw = np.fromfile(fh, dtype=">f8", count=rec_elems)
+    assert raw.size == rec_elems, (SEAICE_PICKUP_SRC, record_index, raw.size, rec_elems)
+    return raw.reshape(COMPACT_NY, COMPACT_NX)
+
+
+def coarsen_seaice_scalar_2d(record_index):
+    """Horizontal-only 3:1 coarsen of a real seaice scalar record (siTICE/
+    siAREA/siHEFF/siHSNOW), same treatment as EtaN/dEtaHdt/EtaH's own
+    coarsen_scalar_2d_field -- reuses the SAME wet-cell-only horizontal
+    averaging, no vertical remap needed (these are all 2-D fields).
+    Returns dict tile -> (30,30)."""
+    fine = read_seaice_2d_record(record_index)[None]  # (1, NY, NX)
+    fine_bathy = _load_fine_bathy()
+    delR15 = ts.parse_llc30_delR()
+    wet15 = ts.build_fine_wet_mask(fine_bathy, delR15)
+    wet_surface = wet15[0:1]
+    coarse, _ = ts.coarsen_field_horizontally(fine, wet_surface)  # (1, 390, 30)
+    return compact_coarse_to_tiles(coarse[0])
+
+
+def remap_seaice_velocity_pair():
+    """siUICE/siVICE: grid-relative vector components on sea-ice's OWN
+    staggered grid -- same category of problem as Uvel/Vvel (confirmed
+    same C-grid west/south-face convention, see module section
+    docstring above), so reuse remap_velocity_pair_llc90_to_llc30's
+    exact same unstagger/rotate/remap/rotate-back/restagger pipeline
+    directly, just reading from the seaice source file's own records
+    (50-level ocean-velocity machinery is overkill for a single-level
+    2-D field, so this is a thin 1-level-only variant of that pipeline,
+    not a reuse of remap_velocity_pair_llc90_to_llc30 itself, which
+    hard-codes PICKUP_NLEV=50 vertical remap -- a single level needs no
+    vertical remap at all, only the horizontal rotate/coarsen steps).
+    Returns dict tile -> (Uvel30, Vvel30), each (30,30) LLC30-resolution.
+    """
+    uice_fine = read_seaice_2d_record(SI_UICE_REC)[None]  # (1, NY, NX)
+    vice_fine = read_seaice_2d_record(SI_VICE_REC)[None]
+
+    uC, vC = unstagger_uv_to_center_llc90(uice_fine, vice_fine)
+
+    cos90, sin90 = load_llc90_angle_cos_sin()
+    uE, vN = rotate_xy_to_en(uC, vC, cos90, sin90)
+
+    fine_bathy = _load_fine_bathy()
+    delR15 = ts.parse_llc30_delR()
+    wet15 = ts.build_fine_wet_mask(fine_bathy, delR15)
+    uE_coarse, _ = ts.coarsen_field_horizontally(uE, wet15[0:1])
+    vN_coarse, _ = ts.coarsen_field_horizontally(vN, wet15[0:1])
+
+    cos30_compact, sin30_compact = _llc30_angle_cos_sin_compact()
+    uC30, vC30 = rotate_en_to_xy(uE_coarse, vN_coarse, cos30_compact, sin30_compact)
+
+    Uvel30, Vvel30 = restagger_center_to_uv_llc30(uC30, vC30)
+    return compact_coarse_to_tiles(Uvel30[0]), compact_coarse_to_tiles(Vvel30[0])
+
+
+# ===========================================================================
 # Pickup file writer
 # ===========================================================================
 
@@ -801,62 +1016,43 @@ PICKUP_FLDLIST = [f"{name:<8s}" for name in PICKUP_OUT_FIELDS]
 assert all(len(f) == 8 for f in PICKUP_FLDLIST)
 
 
-def _tile_global_row_range(tile):
-    """Return (row_start, row_end) 1-indexed, matching this config's own
-    already-committed run/hFacC.<tile>.001.meta dimList convention
-    EXACTLY (reused verbatim, not re-derived -- see plan)."""
-    path = os.path.join(RUN_DIR, f"hFacC.{tile:03d}.001.meta")
-    with open(path) as fh:
-        text = fh.read()
-    m = re.search(r"390,\s*(\d+),\s*(\d+)", text)
-    assert m is not None, (path, "could not find '390,<start>,<end>' in dimList")
-    return int(m.group(1)), int(m.group(2))
-
-
-def _tile_has_map2glob(tile):
-    path = os.path.join(RUN_DIR, f"hFacC.{tile:03d}.001.meta")
-    with open(path) as fh:
-        return "map2glob" in fh.read()
-
-
-def write_ggl90_pickup_tile(tile, ggl90tke, out_dir):
-    """Write pickup_ggl90.0000000000.<tile>.001.{data,meta} -- a SEPARATE
-    pickup file pkg/ggl90 reads via its own GGL90_READ_PICKUP (confirmed:
-    unconditionally triggered whenever pickupSuff.NE.' ', per
-    ggl90_init_varia.F's `IF (nIter0.NE.0 .OR. pickupSuff.NE.' ')` -- a
-    real runtime dependency discovered only when the first end-to-end
+def write_ggl90_pickup_global(ggl90tke_tiles, out_dir):
+    """Write a SINGLE GLOBAL pickup_ggl90.0000000000.data/.meta -- a
+    SEPARATE pickup file pkg/ggl90 reads via its own GGL90_READ_PICKUP
+    (confirmed: unconditionally triggered whenever pickupSuff.NE.' ',
+    per ggl90_init_varia.F's `IF (nIter0.NE.0 .OR. pickupSuff.NE.' ')` --
+    a real runtime dependency discovered only when the first end-to-end
     mitgcmuv run aborted with a missing-file STOP, not foreseen in the
     original plan). Single-field (GGL90TKE, 15 levels), "old way"
-    READ_REC_3D_RL dispatch (no fldList -- confirmed against this
-    config's OWN already-committed run/pickup_ggl90.ckptA.001.001.meta,
-    real GGL90 output from a prior run: nDims=3, dataprec=float64,
-    nrecords=1). ggl90tke: (15,30,30) array, already masked at dry
-    hFacC cells by the caller."""
+    READ_REC_3D_RL dispatch via MDS_READ_FIELD, which -- now that
+    useSingleCpuIO=.TRUE. -- REQUIRES a global file (confirmed: that
+    routine's useSingleCPUIO branch only ever opens the global filename,
+    no per-tile fallback, see module docstring). dimList is the FULL
+    global compact extent (no per-tile row range, no map2glob), matching
+    real V4r6's own global-pickup .meta convention exactly.
+    ggl90tke_tiles: dict tile(1..13) -> (15,30,30) array, already masked
+    at dry hFacC cells by the caller."""
     os.makedirs(out_dir, exist_ok=True)
-    data_path = os.path.join(out_dir, f"pickup_ggl90.0000000000.{tile:03d}.001.data")
-    meta_path = os.path.join(out_dir, f"pickup_ggl90.0000000000.{tile:03d}.001.meta")
+    data_path = os.path.join(out_dir, "pickup_ggl90.0000000000.data")
+    meta_path = os.path.join(out_dir, "pickup_ggl90.0000000000.meta")
 
-    assert ggl90tke.shape == (NLEV30, TILE_NY, TILE_NX), (tile, ggl90tke.shape)
-    blob = ggl90tke.astype(">f8").tobytes()
-    expected_bytes = NLEV30 * TILE_NY * TILE_NX * 8
-    assert len(blob) == expected_bytes, (tile, len(blob), expected_bytes)
+    compact = tiles_to_compact_coarse(ggl90tke_tiles)
+    assert compact.shape == (NLEV30, COMPACT_COARSE_NY, COMPACT_COARSE_NX), compact.shape
+    blob = compact.astype(">f8").tobytes()
+    expected_bytes = NLEV30 * COMPACT_COARSE_NY * COMPACT_COARSE_NX * 8
+    assert len(blob) == expected_bytes, (len(blob), expected_bytes)
     with open(data_path, "wb") as fh:
         fh.write(blob)
     observed = os.path.getsize(data_path)
     assert observed == expected_bytes, (data_path, observed, expected_bytes)
 
-    row_start, row_end = _tile_global_row_range(tile)
     lines = [
         " nDims = [   3 ];",
         " dimList = [",
-        f"    30,    1,   30,",
-        f"   390,  {row_start:3d},  {row_end:3d},",
-        f"    15,    1,   15",
+        f"    {COMPACT_COARSE_NX},    1,   {COMPACT_COARSE_NX},",
+        f"   {COMPACT_COARSE_NY},    1,  {COMPACT_COARSE_NY},",
+        f"    {NLEV30},    1,   {NLEV30}",
         " ];",
-    ]
-    if _tile_has_map2glob(tile):
-        lines.append(" map2glob = [     0,    3 ];")
-    lines += [
         " dataprec = [ 'float64' ];",
         " nrecords = [          1 ];",
         " timeStepNumber = [          0 ];",
@@ -865,56 +1061,108 @@ def write_ggl90_pickup_tile(tile, ggl90tke, out_dir):
         fh.write("\n".join(lines) + "\n")
 
 
-def write_pickup_tile(tile, field_arrays, out_dir):
-    """field_arrays: dict field_name -> array, (15,30,30) for the 6 3-D
-    fields, (30,30) for the 3 2-D fields. Writes
-    pickup.0000000000.<tile>.001.{data,meta} per model/src/write_pickup.F's
-    exact record order (PICKUP_OUT_FIELDS) and big-endian real*8
-    precision (pickup files are always precFloat64, NOT this config's
-    readBinaryPrec=32)."""
+SEAICE_FLDLIST = ["siTICE  ", "siAREA  ", "siHEFF  ", "siHSNOW ",
+                   "siUICE  ", "siVICE  "]
+assert all(len(f) == 8 for f in SEAICE_FLDLIST)
+
+
+def write_seaice_pickup_global(seaice_tiles, out_dir):
+    """seaice_tiles: dict field_name -> dict tile(1..13) -> (30,30) array
+    (all 6 seaice pickup fields are single-level 2-D). Writes a SINGLE
+    GLOBAL pickup_seaice.0000000000.data/.meta, using pkg/seaice's own
+    "new way" fldList convention (confirmed in
+    pkg/seaice/seaice_read_pickup.F: READ_MFLDS_3D_RL dispatch keyed by
+    field name, in the order siTICE/siAREA/siHEFF/siHSNOW/siUICE/
+    siVICE) -- a proper fldList meta avoids the fragile "old way"
+    fixed-record-order fallback entirely (confirmed: `nbFields.LE.0`
+    triggers only a WARNING, not a STOP, when pickupStrictlyMatch is
+    .FALSE., but still risks silently misreading fields in the wrong
+    order without one)."""
     os.makedirs(out_dir, exist_ok=True)
-    data_path = os.path.join(out_dir, f"pickup.0000000000.{tile:03d}.001.data")
-    meta_path = os.path.join(out_dir, f"pickup.0000000000.{tile:03d}.001.meta")
+    data_path = os.path.join(out_dir, "pickup_seaice.0000000000.data")
+    meta_path = os.path.join(out_dir, "pickup_seaice.0000000000.meta")
 
     parts = []
-    for name in PICKUP_OUT_FIELDS_3D:
-        arr = field_arrays[name]
-        assert arr.shape == (NLEV30, TILE_NY, TILE_NX), (tile, name, arr.shape)
-        parts.append(arr.astype(">f8").tobytes())
-    for name in PICKUP_OUT_FIELDS_2D:
-        arr = field_arrays[name]
-        assert arr.shape == (TILE_NY, TILE_NX), (tile, name, arr.shape)
-        parts.append(arr.astype(">f8").tobytes())
+    for name in SEAICE_FIELD_ORDER:
+        compact = tiles_to_compact_coarse(seaice_tiles[name])
+        assert compact.shape == (COMPACT_COARSE_NY, COMPACT_COARSE_NX), (
+            name, compact.shape
+        )
+        parts.append(compact.astype(">f8").tobytes())
     blob = b"".join(parts)
-    expected_bytes = N_RECORDS_PER_TILE * TILE_NY * TILE_NX * 8
-    assert len(blob) == expected_bytes, (tile, len(blob), expected_bytes)
+    expected_bytes = len(SEAICE_FIELD_ORDER) * COMPACT_COARSE_NY * COMPACT_COARSE_NX * 8
+    assert len(blob) == expected_bytes, (len(blob), expected_bytes)
     with open(data_path, "wb") as fh:
         fh.write(blob)
     observed = os.path.getsize(data_path)
     assert observed == expected_bytes, (data_path, observed, expected_bytes)
 
-    # nDims=2 (x,y ONLY -- no z row), matching the real
-    # cs32x15/input/pickup.*.meta convention exactly: a pickup's mixed
-    # 3-D/2-D record layout is interpreted by READ_MFLDS_SET via its own
-    # nFl3D = (nRecords-nFlds)/(thirdDim-1) formula (thirdDim=Nr passed
-    # separately as an argument, NOT encoded in dimList) -- an nDims=3
-    # dimList (this script's FIRST attempt, copied from the single-field
-    # hFacC.*.meta convention) is wrong here and was confirmed to abort
-    # with "READ_MFLDS_SET: Pb with Nb of records" at actual model
-    # runtime (nDims=2 vs. =3 changes which branch of that routine's own
-    # record-count validation applies).
-    row_start, row_end = _tile_global_row_range(tile)
+    fld_list_str = " ".join(f"'{f}'" for f in SEAICE_FLDLIST)
     lines = [
         " nDims = [   2 ];",
         " dimList = [",
-        f"    30,    1,   30,",
-        f"   390,  {row_start:3d},  {row_end:3d}",
+        f"    {COMPACT_COARSE_NX},    1,   {COMPACT_COARSE_NX},",
+        f"   {COMPACT_COARSE_NY},    1,  {COMPACT_COARSE_NY}",
         " ];",
+        " dataprec = [ 'float64' ];",
+        f" nrecords = [{len(SEAICE_FIELD_ORDER):11d} ];",
+        " timeStepNumber = [          0 ];",
+        f" nFlds = [{len(SEAICE_FIELD_ORDER):4d} ];",
+        " fldList = {",
+        f" {fld_list_str}",
+        " };",
     ]
-    if _tile_has_map2glob(tile):
-        lines.append(" map2glob = [     0,    3 ];")
+    with open(meta_path, "w") as fh:
+        fh.write("\n".join(lines) + "\n")
+
+
+def write_pickup_global(field_arrays_tiles, out_dir):
+    """field_arrays_tiles: dict field_name -> dict tile(1..13) -> array
+    ((15,30,30) for the 6 3-D fields, (30,30) for the 3 2-D fields).
+    Writes a SINGLE GLOBAL pickup.0000000000.data/.meta per
+    model/src/write_pickup.F's exact record order (PICKUP_OUT_FIELDS)
+    and big-endian real*8 precision (pickup files are always
+    precFloat64, NOT this config's readBinaryPrec=32). dimList/fldList
+    format confirmed byte-for-byte against real V4r6's own GLOBAL
+    pickup.0000000001.meta (nDims=2, full compact extent, no per-tile
+    row range, no map2glob -- see module docstring)."""
+    os.makedirs(out_dir, exist_ok=True)
+    data_path = os.path.join(out_dir, "pickup.0000000000.data")
+    meta_path = os.path.join(out_dir, "pickup.0000000000.meta")
+
+    parts = []
+    for name in PICKUP_OUT_FIELDS_3D:
+        compact = tiles_to_compact_coarse(field_arrays_tiles[name])
+        assert compact.shape == (NLEV30, COMPACT_COARSE_NY, COMPACT_COARSE_NX), (
+            name, compact.shape
+        )
+        parts.append(compact.astype(">f8").tobytes())
+    for name in PICKUP_OUT_FIELDS_2D:
+        compact = tiles_to_compact_coarse(field_arrays_tiles[name])
+        assert compact.shape == (COMPACT_COARSE_NY, COMPACT_COARSE_NX), (
+            name, compact.shape
+        )
+        parts.append(compact.astype(">f8").tobytes())
+    blob = b"".join(parts)
+    expected_bytes = N_RECORDS_PER_TILE * COMPACT_COARSE_NY * COMPACT_COARSE_NX * 8
+    assert len(blob) == expected_bytes, (len(blob), expected_bytes)
+    with open(data_path, "wb") as fh:
+        fh.write(blob)
+    observed = os.path.getsize(data_path)
+    assert observed == expected_bytes, (data_path, observed, expected_bytes)
+
+    # nDims=2 (x,y ONLY -- no z row), matching real V4r6's own global
+    # pickup.0000000001.meta exactly: a pickup's mixed 3-D/2-D record
+    # layout is interpreted by READ_MFLDS_SET via its own
+    # nFl3D = (nRecords-nFlds)/(thirdDim-1) formula (thirdDim=Nr passed
+    # separately as an argument, NOT encoded in dimList).
     fld_list_str = " ".join(f"'{f}'" for f in PICKUP_FLDLIST)
-    lines += [
+    lines = [
+        " nDims = [   2 ];",
+        " dimList = [",
+        f"    {COMPACT_COARSE_NX},    1,   {COMPACT_COARSE_NX},",
+        f"   {COMPACT_COARSE_NY},    1,  {COMPACT_COARSE_NY}",
+        " ];",
         " dataprec = [ 'float64' ];",
         f" nrecords = [{N_RECORDS_PER_TILE:11d} ];",
         " timeStepNumber = [          0 ];",
@@ -1046,33 +1294,75 @@ def main():
 
     print()
     print("=" * 70)
-    print("Step 6/6: write 13 tile pickup.0000000000.<tile>.001.{data,meta} files")
+    print("Step 6/6: write GLOBAL pickup.0000000000.{data,meta} (single file)")
     print("=" * 70)
-    for tile in range(1, 14):
-        field_arrays = {
-            "Uvel": uvel_tiles[tile],
-            "Vvel": vvel_tiles[tile],
-            "Theta": theta_tiles[tile],
-            "Salt": salt_tiles[tile],
-            "GuNm1": gunm1_tiles[tile],
-            "GvNm1": gvnm1_tiles[tile],
-            "EtaN": etan_tiles[tile],
-            "dEtaHdt": detahdt_tiles[tile],
-            "EtaH": etah_tiles[tile],
-        }
-        write_pickup_tile(tile, field_arrays, OUT_PICKUP_DIR)
-    print(f"  Wrote 13 tiles to {OUT_PICKUP_DIR}")
+    field_arrays_tiles = {
+        "Uvel": uvel_tiles,
+        "Vvel": vvel_tiles,
+        "Theta": theta_tiles,
+        "Salt": salt_tiles,
+        "GuNm1": gunm1_tiles,
+        "GvNm1": gvnm1_tiles,
+        "EtaN": etan_tiles,
+        "dEtaHdt": detahdt_tiles,
+        "EtaH": etah_tiles,
+    }
+    write_pickup_global(field_arrays_tiles, OUT_PICKUP_DIR)
+    print(f"  Wrote global pickup to {OUT_PICKUP_DIR}")
 
     print()
     print("=" * 70)
-    print("Step 6b/6: write pkg/ggl90's own separate pickup_ggl90.* files")
+    print("Step 6b/6: write pkg/ggl90's own separate GLOBAL pickup_ggl90.* file")
     print("=" * 70)
     GGL90_TKE_MIN = 1.0e-11  # ggl90_readparms.F's own GGL90TKEmin default
-    for tile in range(1, 14):
-        hfacC = masks[tile][0]
-        ggl90tke = np.where(hfacC, GGL90_TKE_MIN, 0.0)
-        write_ggl90_pickup_tile(tile, ggl90tke, OUT_PICKUP_DIR)
-    print(f"  Wrote 13 pickup_ggl90 tiles to {OUT_PICKUP_DIR}")
+    ggl90tke_tiles = {
+        tile: np.where(masks[tile][0], GGL90_TKE_MIN, 0.0)
+        for tile in range(1, 14)
+    }
+    write_ggl90_pickup_global(ggl90tke_tiles, OUT_PICKUP_DIR)
+    print(f"  Wrote global pickup_ggl90 to {OUT_PICKUP_DIR}")
+
+    print()
+    print("=" * 70)
+    print("Step 6c/6: write pkg/seaice's own separate GLOBAL pickup_seaice.* file")
+    print("=" * 70)
+    sitice_tiles = coarsen_seaice_scalar_2d(SI_TICE_REC)
+    siarea_tiles = coarsen_seaice_scalar_2d(SI_AREA_REC)
+    siheff_tiles = coarsen_seaice_scalar_2d(SI_HEFF_REC)
+    sihsnow_tiles = coarsen_seaice_scalar_2d(SI_HSNOW_REC)
+    siuice_tiles, sivice_tiles = remap_seaice_velocity_pair()
+
+    hfacC_surface_tiles2 = {t: masks[t][0][0] for t in range(1, 14)}
+    hfacW_surface_tiles = {t: masks[t][1][0] for t in range(1, 14)}
+    hfacS_surface_tiles = {t: masks[t][2][0] for t in range(1, 14)}
+    sitice_tiles = apply_mask_and_assert(
+        sitice_tiles, {t: (hfacC_surface_tiles2[t],) for t in range(1, 14)}, 0, "siTICE"
+    )
+    siarea_tiles = apply_mask_and_assert(
+        siarea_tiles, {t: (hfacC_surface_tiles2[t],) for t in range(1, 14)}, 0, "siAREA"
+    )
+    siheff_tiles = apply_mask_and_assert(
+        siheff_tiles, {t: (hfacC_surface_tiles2[t],) for t in range(1, 14)}, 0, "siHEFF"
+    )
+    sihsnow_tiles = apply_mask_and_assert(
+        sihsnow_tiles, {t: (hfacC_surface_tiles2[t],) for t in range(1, 14)}, 0, "siHSNOW"
+    )
+    siuice_tiles = apply_mask_and_assert(
+        siuice_tiles, {t: (hfacW_surface_tiles[t],) for t in range(1, 14)}, 0, "siUICE"
+    )
+    sivice_tiles = apply_mask_and_assert(
+        sivice_tiles, {t: (hfacS_surface_tiles[t],) for t in range(1, 14)}, 0, "siVICE"
+    )
+    seaice_tiles = {
+        "siTICE": sitice_tiles,
+        "siAREA": siarea_tiles,
+        "siHEFF": siheff_tiles,
+        "siHSNOW": sihsnow_tiles,
+        "siUICE": siuice_tiles,
+        "siVICE": sivice_tiles,
+    }
+    write_seaice_pickup_global(seaice_tiles, OUT_PICKUP_DIR)
+    print(f"  Wrote global pickup_seaice to {OUT_PICKUP_DIR}")
 
     print()
     print("ALL CHECKS PASSED.")
