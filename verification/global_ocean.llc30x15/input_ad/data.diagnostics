@@ -1,0 +1,33 @@
+# Diagnostic Package Choices -- minimal stream set for this smoke-test
+# config (real V4r6's own data.diagnostics has ~80 production streams,
+# far more than warranted here -- see HANDOFF.md). useDiagnostics=.TRUE.
+# with a handful of representative streams exercises the package
+# without scope creep; this is a user-facing output-configuration
+# choice, not a package-compatibility requirement.
+ &diagnostics_list
+#
+ dumpatlast = .TRUE.,
+#
+ frequency(1) = 864000.,
+ fields(1,1) = 'THETA',
+ filename(1) = 'diags/THETA',
+#
+ frequency(2) = 864000.,
+ fields(1,2) = 'SALT',
+ filename(2) = 'diags/SALT',
+#
+ frequency(3) = 864000.,
+ fields(1,3) = 'UVEL',
+ filename(3) = 'diags/UVEL',
+#
+ frequency(4) = 864000.,
+ fields(1,4) = 'VVEL',
+ filename(4) = 'diags/VVEL',
+#
+ frequency(5) = 864000.,
+ fields(1,5) = 'SIarea',
+ filename(5) = 'diags/SIarea',
+ &
+
+ &DIAG_STATIS_PARMS
+ &

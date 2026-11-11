@@ -1,0 +1,38 @@
+# LLC30 adjoint experiment: based on V4r6's own real data.smooth values
+# (Time-invariant-adjoint/v4r6/input.V4r6.102/data.smooth), with ONE real
+# correction found only by actually running the model: V4r6's own
+# smooth2Dsize(1)=2 / smooth3DsizeH(1)=3 / smooth3DsizeZ(1)=3 are NOT
+# parameter-only as an earlier draft of this file claimed -- confirmed in
+# pkg/smooth/smooth_init2d.F/smooth_init3d.F, those exact values (2 for
+# 2D, 3 for 3D) gate reading POSITION-VARYING smoothing-scale files from
+# disk (smooth2Dscales001, smooth3DscalesH001, smooth3DscalesZ001),
+# which are real V4r6 production files at LLC90 resolution this project
+# never coarsened to LLC30 (confirmed via a real STOP ABNORMAL END:
+# MDS_READ_FIELD smooth2Dscales001.data when first run with the
+# verbatim-copied value). Fixed by using size=0 (CONSTANT scale,
+# smooth2D_Lx0/Ly0 and smooth3D_Lx0/Ly0/Lz0 below) instead -- these are
+# runtime &SMOOTH_NML values, not CPP flags, so no rebuild is needed.
+# The constant values used are the real V4r6 production scale files'
+# own domain-mean magnitudes (confirmed by direct inspection of
+# smooth2Dscales001/smooth3DscalesH001/smooth3DscalesZ001: horizontal
+# Lx/Ly mean ~191,400 m, vertical Lz mean ~236 m) -- a documented
+# simplification (flat representative scale instead of the real
+# position-varying field), same pattern as Phase A's GM_background_K
+# scalar substitution for GM_*3dFile.
+ &SMOOTH_NML
+ smooth2Dnbt(1)=300
+ smooth2Dtype(1)=1
+ smooth2Dsize(1)=0
+ smooth2D_Lx0(1)=191400.,
+ smooth2D_Ly0(1)=191400.,
+ smooth2Dfilter(1)=0
+ smooth3Dnbt(1)=300
+ smooth3DtypeH(1)=1
+ smooth3DsizeH(1)=0
+ smooth3D_Lx0(1)=191400.,
+ smooth3D_Ly0(1)=191400.,
+ smooth3DtypeZ(1)=1
+ smooth3DsizeZ(1)=0
+ smooth3D_Lz0(1)=236.25,
+ smooth3Dfilter(1)=0
+ /

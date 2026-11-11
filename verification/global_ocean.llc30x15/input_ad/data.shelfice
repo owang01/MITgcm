@@ -1,0 +1,26 @@
+# SHELFICE parameters -- based on real V4r6 values (Time-invariant-
+# adjoint/v4r6/.../run_shelfice_v2_fixed_check/data.shelfice), minus
+# SHELFICETransCoeffTFile (a production-tuned 3-D coefficient file
+# this project can't source) and SHELFICEloadAnomalyFile (production-
+# tuned, likewise out of scope).
+#
+# SHELFICEtopoFile IS kept (unlike an earlier draft of this plan,
+# which mistakenly thought STICdepthFile below supersedes it):
+# confirmed in pkg/shelfice/shelfice_init_depths.F that
+# SHELFICEtopoFile drives SHELFICE_INIT_DEPTHS, which clips rSurfC
+# (actual ocean upper-boundary geometry) -- a DIFFERENT mechanism from
+# STIC_INIT_DEPTHS's R_stic (ice-front thermodynamics only, see
+# data.stic). The real confirmed-stable STIC run sets both, pointing
+# at the same source file -- see HANDOFF.md.
+ &SHELFICE_PARM01
+ SHELFICEtopoFile = 'ICE_DRAFT_LLC30.bin',
+ SHELFICEadvDiffHeatFlux = .TRUE.,
+ SHELFICEboundaryLayer = .FALSE.,
+ SHELFICEuseGammaFrict = .FALSE.,
+ SHELFICEconserve = .TRUE.,
+ SHELFICEheatTransCoeff=2.e-5,
+ SHELFICEkappa = 0.,
+ useISOMIPTD = .FALSE.,
+ no_slip_shelfice = .FALSE.,
+ SHELFICEwriteState = .TRUE.,
+ /

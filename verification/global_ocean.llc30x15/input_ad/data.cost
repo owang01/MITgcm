@@ -1,0 +1,10 @@
+#
+#
+# ******************
+# cost function
+# ******************
+#-- The SST cost term goes entirely through pkg/ecco's own gencost
+#   mechanism (data.ecco) -- pkg/cost's own ALLOW_COST_* terms are
+#   unused here (all undef in code_ad/COST_OPTIONS.h).
+ &COST_NML
+ &

@@ -1,0 +1,11 @@
+# LLC30 adjoint experiment: 3-5 real 1992-era CTD/XBT profiles
+# re-targeted onto LLC30's own grid (preprocess/build_llc30_profiles_demo.py),
+# extracted from the real WOD_WO_CTD_OSD_20231103_92to05.nc. profilesDoGenGrid
+# is mandatory for this config (profiles_init_fixed.F hard-requires it
+# since this config uses usingCurvilinearGrid, not
+# usingSphericalPolarGrid).
+ &PROFILES_NML
+ profilesDir='',
+ profilesDoGenGrid=.TRUE.,
+ profilesfiles(1)='profiles_llc30_demo',
+ &

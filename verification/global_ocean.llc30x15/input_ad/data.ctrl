@@ -1,0 +1,34 @@
+#
+#
+# *********************
+# ECCO controlvariables
+# *********************
+#-- LLC30 adjoint experiment: 4 time-varying 2-D forcing controls
+#   (xx_atemp/xx_tauu/xx_tauv/xx_precip, user-specified), all real
+#   V4r6 xx_gentim2d controls (see input.V4r6.102/data.ctrl). Flat
+#   all-ones weight (ones_llc30.bin) substitutes for V4r6's real
+#   production error-covariance weight files, which don't exist for
+#   this project -- same documented-substitution pattern as the
+#   isomip/global_ocean.cs32x15 ones_64b.bin convention.
+ &CTRL_NML
+ &
+#
+# *********************
+# names for ctrl_pack/unpack
+# *********************
+ &CTRL_PACKNAMES
+ &
+#
+# *********************
+# names for CTRL_GENARR, CTRL_GENTIM
+# *********************
+ &CTRL_NML_GENARR
+ xx_gentim2d_file(1)       = 'xx_atemp',
+ xx_gentim2d_weight(1)     = 'ones_llc30.bin',
+ xx_gentim2d_file(2)       = 'xx_precip',
+ xx_gentim2d_weight(2)     = 'ones_llc30.bin',
+ xx_gentim2d_file(3)       = 'xx_tauu',
+ xx_gentim2d_weight(3)     = 'ones_llc30.bin',
+ xx_gentim2d_file(4)       = 'xx_tauv',
+ xx_gentim2d_weight(4)     = 'ones_llc30.bin',
+ &

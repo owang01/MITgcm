@@ -1,0 +1,34 @@
+# *******************
+# ECCO gradient check
+# *******************
+#-- LLC30 adjoint experiment: iGloTile/jGloTile/iGloPos/jGloPos point
+#   at a confirmed wet surface cell. Global compact run/hFacC.data
+#   (useSingleCpuIO, shape (15,30,390)) read back with numpy: wet cell
+#   at 0-indexed global (j=1, i=30). Confirmed via run/XC.data that
+#   longitude is continuous across i=30 (tile1/tile2 boundary within
+#   facet 1, sNx=sNy=30, nSx=13, nSy=1 -- tiles stacked consecutively
+#   along X in tile-number order), so global i=30 is local index 0 of
+#   tile 2: iGloTile=2, iGloPos=1 (1-indexed); jGloTile=1 (nSy=1),
+#   jGloPos=2 (1-indexed, j=1 0-indexed + 1).
+#-- nend=0 (just the single check at icomp=nbeg=0, the wet cell above):
+#   a real discovery, found only by running the model -- grdchk_main.F's
+#   icomp loop walks LINEARLY through the global compact-grid control
+#   vector starting at this cell, so nend=3 (4 checks total) walked into
+#   3 immediately-following DRY cells (confirmed: run/hFacC.data at
+#   i=2,3,4 (1-indexed) alongside this cell is all 0.0), where both the
+#   adjoint and finite-difference gradients are near-zero numerical
+#   noise -- the wild "1 - fd/adj" ratios at those points are an
+#   artifact of dividing noise by noise, not a real adjoint-correctness
+#   failure. Confirmed check #1 (THIS cell) agrees to ~2%
+#   (adj=-1.11027E-02, fd=-1.10772E-02).
+ &GRDCHK_NML
+ grdchk_eps       = 1.d-4,
+ iGloTile         = 2,
+ jGloTile         = 1,
+ iGloPos          = 1,
+ jGloPos          = 2,
+ kGloPos          = 1,
+ nstep            = 1,
+ nend             = 0,
+ grdchkvarname    = "xx_atemp",
+ &

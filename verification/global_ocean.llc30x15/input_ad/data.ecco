@@ -1,0 +1,52 @@
+# ******************
+# ECCO cost function
+# ******************
+#-- LLC30 adjoint experiment: real satellite SST cost term, modeled
+#   directly on real V4r6's own confirmed data.ecco entry
+#   (input.V4r6.102/data.ecco, gencost_name(4)='sst-reynoldsmean') --
+#   NOT a climatology substitute (an earlier planning pass proposed a
+#   WOA18 climatology, which was wrong: the real AVHRR_OI-NCEI-L4-GLOB
+#   product and its real per-cell error file both exist locally for
+#   1992, matching this config's own data.cal/forcing start year -- see
+#   HANDOFF.md). gencost_datafile/errfile point at the newly-coarsened
+#   LLC30 versions of those two real files
+#   (preprocess/coarsen_sst_obs_to_llc30.py), not V4r6's own
+#   LLC90-resolution filenames. gencost_datafile is the file's PREFIX,
+#   not its full name -- confirmed in ecco_check.F/cost_gencal.F, which
+#   build the actual on-disk name as '<gencost_datafile>_<year>'
+#   (e.g. AVHRR_LLC30_MONTHLY_1992, matching real V4r6's own
+#   AVHRR_OI-NCEI-L4-GLOB_<year> per-year file convention exactly) --
+#   a real discovery, found only by running the model (first attempt
+#   used the bare .bin filename and tripped ECCO_CHECK_FILES' "missing
+#   file so gencost gets switched off" warning, silently zeroing the
+#   cost term instead of erroring). gencost_startdate1/2 must match
+#   this config's own data.cal startDate_1=19920101 (confirmed from
+#   cost_gencal.F: yday is derived from modelstartdate, and the file
+#   lookup requires yday>=localstartdate1's year). gencost_errfile is
+#   DIFFERENT from gencost_datafile: confirmed in ecco_check.F,
+#   non-'variaweight' errfiles are checked with a literal
+#   INQUIRE(file=gencost_errfile(k)) -- no '_<year>' suffix magic, no
+#   extension assumed -- so it must be the EXACT on-disk name including
+#   '.bin' (a second real discovery: the bare-prefix convention that
+#   applies to gencost_datafile does NOT apply here, tripped the same
+#   "missing error file...switched off" warning until this was fixed).
+ &ECCO_COST_NML
+ cost_iprec  = 32,
+ cost_yftype = 'RL',
+ &
+
+ &ECCO_GENCOST_NML
+ gencost_avgperiod(1)   = 'month',
+ gencost_barfile(1)     = 'm_sstmon',
+ gencost_datafile(1)    = 'AVHRR_LLC30_MONTHLY',
+ gencost_errfile(1)     = 'SIGMA_SST_LLC30.bin',
+ gencost_name(1)        = 'sst-reynoldsmean',
+ gencost_startdate1(1)  = 19920101,
+ gencost_startdate2(1)  = 000000,
+ gencost_spmin(1)       = -1.8,
+ gencost_spmax(1)       = 40.,
+ gencost_spzero(1)      = 0.,
+ gencost_preproc(1,1)   = 'mean',
+ gencost_outputlevel(1) = 1,
+ mult_gencost(1)        = 1.,
+ &

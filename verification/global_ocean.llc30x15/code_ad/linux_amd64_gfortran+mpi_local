@@ -1,0 +1,131 @@
+#!/bin/bash
+#
+# Build options for gfortran + OpenMPI (+ NetCDF) on a generic Linux AMD64
+# workstation, for the v4r6 llc90 time-invariant-adjoint setup.
+#
+# Local stand-in for code12m_*/linux_amd64_ifort+mpi_ice_nas.20220310, which
+# is Intel/NAS-specific (ifort, -ipo, -axCORE-AVX2, /nasa/... module paths)
+# and unusable off Pleiades/Aitken.
+#
+# Derived from MITgcm/tools/build_options/linux_amd64_gfortran, and from
+# 3deg/v4r5/local/linux_amd64_gfortran+mpi_local (the 3deg precedent) --
+# but unlike that one, v4r6's packages.conf enables `profiles`, so NetCDF
+# must actually be linked here (3deg's packages.conf has neither `profiles`
+# nor `mnc` and deliberately left NetCDF unconfigured).
+#
+# Toolchain comes from a micromamba env, cloned from the 3deg-validated
+# `mitgcm_ad` env and then given netcdf-fortran (so as not to risk a
+# solver-driven version bump invalidating the 3deg validation):
+#   micromamba create -y -n mitgcm_ad_v4r6 --clone mitgcm_ad
+#   micromamba install -y -n mitgcm_ad_v4r6 -c conda-forge netcdf-fortran
+# Put it on PATH before calling genmake2:
+#   export PATH=$HOME/micromamba/envs/mitgcm_ad_v4r6/bin:$PATH
+#
+# Usage:
+#   $MITGCM/tools/genmake2 -rootdir $MITGCM \
+#       -mods ../code12m_sifb_v3i_longerctrlrec_no_ctrl_skip_recs_llc90_v4r5 \
+#       -optfile ../local/linux_amd64_gfortran+mpi_local -mpi
+#
+# NOTE ON NUMERICS: this is gfortran, not ifort 2020.4 with
+# "-O2 -ipo -fp-model precise". Results will not be bit-identical to the HPC
+# runs. Expect agreement to round-off, not to the last digit.
+
+#- Always use the MPI wrappers. The stock optfile defaults FC to mpif77; we
+#  pin mpifort, which is the wrapper conda-forge openmpi always provides.
+CC=${CC:=mpicc}
+FC=${FC:=mpifort}
+F90C=${F90C:=mpifort}
+
+#- -DNML_TERMINATOR is required for gfortran to accept the "/"-terminated
+#  namelists used throughout input.V4r6.102/data* (the ifort optfile did
+#  not need it).
+DEFINES='-DWORDLENGTH=4 -DNML_TERMINATOR'
+
+#- TAF emits fixed-form lines past column 72; without this, ad_taf_output.f
+#  is silently truncated and miscompiled. Equivalent to ifort's "-132".
+EXTENDED_SRC_FLAG='-ffixed-line-length-132'
+F90FIXEDFORMAT='-ffixed-form'
+GET_FC_VERSION="--version"
+OMPFLAG='-fopenmp'
+
+NOOPTFLAGS='-O0'
+NOOPTFILES=''
+
+CFLAGS='-O0'
+
+#- check compiler version for version-gated flags
+fcVers=`$CC -dumpversion | head -n 1 | sed 's/^[^0-9]* //;s/\..*$//'`
+if ! [[ $fcVers =~ ^[0-9]+$ ]] ; then
+  echo "    un-recognized Compiler-version '$fcVers' ; ignored (-> set to 0)" ; fcVers=0 ;
+else echo "    get Compiler-version: '$fcVers'" ; fi
+
+if [ $fcVers -ge 10 ] ; then
+  FFLAGS="$FFLAGS -fallow-argument-mismatch"
+fi
+
+#- MANDATORY: every .data input file and every reference ADJ*.data output is
+#  big-endian. Drop this and the model still runs happily on garbage.
+FFLAGS="$FFLAGS -fconvert=big-endian -fimplicit-none"
+
+#- the adjoint has very large static COMMON blocks (llc90 is much bigger
+#  than 3deg's grid, so this matters even more here)
+CFLAGS="$CFLAGS -mcmodel=medium"
+FFLAGS="$FFLAGS -mcmodel=medium"
+
+if test "x$IEEE" = x ; then     #- with optimisation:
+   #- -O2 rather than the stock -O3, to stay close to the HPC build's -O2
+   #  and to avoid aggressive-optimisation differences in the adjoint.
+    FOPTIM='-O2 -funroll-loops'
+    NOOPTFILES="$NOOPTFILES ini_masks_etc.F"
+   #- CONTINGENCY: ad_taf_output.f here is ~12MB/hundreds of thousands of
+   #  lines in one file -- if compiling at -O2 is too slow or exhausts
+   #  memory, add it here:
+   #NOOPTFILES="$NOOPTFILES ad_taf_output.f"
+else
+    FFLAGS="$FFLAGS -Wall"
+    if [ $fcVers -ge 10 ] ; then
+      FFLAGS="$FFLAGS -Wno-unused-dummy-argument"
+    fi
+  if test "x$DEVEL" = x ; then  #- no optimisation + IEEE :
+    FOPTIM='-O0'
+  else                          #- development/check options:
+   #- Phase 2 lever: traps a gradient blow-up at its origin instead of
+   #  letting it surface as NaNs in ADJ*.data. Use: genmake2 -devel ...
+    FOPTIM='-O0 -g -fbounds-check'
+    FOPTIM="$FOPTIM -ffpe-trap=invalid,zero,overflow -finit-real=inf"
+  fi
+fi
+
+F90FLAGS=$FFLAGS
+F90OPTIM=$FOPTIM
+
+#- NetCDF: v4r6's packages.conf enables `profiles` (unlike 3deg), so
+#  genmake2's HAVE_NETCDF autodetection must actually succeed here. Point it
+#  at the netcdf-fortran package installed into mitgcm_ad_v4r6 (see header).
+if [ -z "$NETCDF_HOME" ] ; then
+  NETCDF_HOME="$( dirname $( dirname $( command -v nf-config ) ) )"
+fi
+if [ ! -d "$NETCDF_HOME" ] ; then
+  echo "could not locate NetCDF prefix (tried '$NETCDF_HOME'; is nf-config on PATH?), aborting"
+  exit 1
+fi
+INCLUDEDIRS="$NETCDF_HOME/include"
+INCLUDES="-I$NETCDF_HOME/include"
+LIBS="-L$NETCDF_HOME/lib -lnetcdff -lnetcdf"
+
+#- MPI includes. Self-contained: fall back to the micromamba env if the
+#  usual MPI_HOME / MPI_INC_DIR are not exported.
+if [ -z "$MPI_INC_DIR" ] ; then
+  if [ -n "$MPI_HOME" ] ; then
+    MPI_INC_DIR="$MPI_HOME/include"
+  else
+    MPI_INC_DIR="$( dirname $( dirname $( command -v mpifort ) ) )/include"
+  fi
+fi
+if [ ! -d "$MPI_INC_DIR" ] ; then
+  echo "could not locate MPI include dir (tried '$MPI_INC_DIR'), aborting"
+  exit 1
+fi
+INCLUDES+=" -I$MPI_INC_DIR"
+INCLUDEDIRS+=" $MPI_INC_DIR"
+MPIINCLUDEDIR="$MPI_INC_DIR"

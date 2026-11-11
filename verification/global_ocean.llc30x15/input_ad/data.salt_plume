@@ -1,0 +1,7 @@
+# Parameters for SALT_PLUME package -- real V4r6 value verbatim
+# (Time-invariant-adjoint/v4r6/.../run_shelfice_v2_fixed_check/data.salt_plume),
+# confirmed via the real confirmed-stable STIC run. Parameter-only, no
+# file dependency.
+ &SALT_PLUME_PARM01
+ SPsalFRAC= 0.5D0,
+ /

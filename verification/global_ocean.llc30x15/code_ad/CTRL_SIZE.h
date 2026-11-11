@@ -1,0 +1,36 @@
+c     ==================================================================
+c     CTRL_SIZE.h
+c     ==================================================================
+c     LLC30 adjoint experiment: 4 xx_gentim2d controls (xx_atemp,
+c     xx_tauu, xx_tauv, xx_precip) -- the package default
+c     maxCtrlTim2D=1 is too small, override to 4. No genarr2d/genarr3d
+c     controls are used, so maxCtrlArr2D/maxCtrlArr3D stay at their
+c     package defaults (unused).
+
+#if (defined (ALLOW_GENARR2D_CONTROL) || defined (ALLOW_GENARR3D_CONTROL) || defined (ALLOW_GENTIM2D_CONTROL))
+
+C     Generic control variable array dimension
+C     ----------------------------------------
+C
+C     maxCtrlArr2D :: number of 2-d generic init. ctrl variables
+C     maxCtrlArr3D :: number of 3-d generic init. ctrl variables
+C     maxCtrlTim2D :: number of 2-d generic tim-varying ctrl variables
+C     maxCtrlProc  :: number of pre-processing options per ctrl variable
+
+      integer     maxCtrlArr2D
+      parameter ( maxCtrlArr2D = 1 )
+
+      integer     maxCtrlArr3D
+      parameter ( maxCtrlArr3D = 1 )
+
+      integer     maxCtrlTim2D
+      parameter ( maxCtrlTim2D = 4 )
+
+      integer     maxCtrlProc
+      parameter ( maxCtrlProc = 1 )
+
+#endif
+
+CEH3 ;;; Local Variables: ***
+CEH3 ;;; mode:fortran ***
+CEH3 ;;; End: ***

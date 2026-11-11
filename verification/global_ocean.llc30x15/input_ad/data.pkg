@@ -1,0 +1,31 @@
+# Packages
+#-- LLC30 lightweight verification config (Task 4). useEXCH2 is
+#   deliberately NOT listed: this namelist variable does not exist
+#   anywhere in MITgcm source (confirmed by grepping model/, pkg/,
+#   eesupp/ -- zero hits); pkg/exch2 is enabled purely at compile time
+#   via code/packages.conf. useCAL is set explicitly (not left to the
+#   useEXF-implies-useCAL default, which was removed at checkpoint66d).
+#-- Phase A (adjoint-experiment plan, see HANDOFF.md): added
+#   useGMRedi/useSeaice/useShelfIce/useSTIC/useSALT_PlUME/
+#   useDiagnostics to match real V4r6's forward package list minus
+#   sbo. useShelfIce+useSTIC together (not STIC alone) confirmed from
+#   the real confirmed-stable run_shelfice_v2_fixed_check/data.pkg.
+#-- Phase B (this input_ad/, adjoint-experiment plan): added
+#   useGrdchk/useCTRL/useECCO/useProfiles/useSMOOTH, now that
+#   pkg/ctrl/pkg/ecco/pkg/profiles/pkg/smooth are compiled in code_ad/.
+ &PACKAGES
+ useEXF   =.TRUE.,
+ useCAL   =.TRUE.,
+ useGGL90 =.TRUE.,
+ useGMRedi=.TRUE.,
+ useSeaice=.TRUE.,
+ useShelfIce=.TRUE.,
+ useSTIC=.TRUE.,
+ useSALT_PlUME=.TRUE.,
+ useDiagnostics=.TRUE.,
+ useGrdchk=.TRUE.,
+ useCTRL=.TRUE.,
+ useECCO=.TRUE.,
+ useProfiles=.TRUE.,
+ useSMOOTH=.TRUE.,
+ &
