@@ -1520,6 +1520,108 @@ def coarsen_bathy_facet(arr):
     return coarsen_bathy_block(blocks)
 
 
+def coarsen_bathy_and_ice_block(bathy9, ice9):
+    """3x3 blocks of bathymetry and ice-shelf-draft depth values (possibly
+    0 = land / no-ice), coarsened TOGETHER so the coarse (bathy, ice)
+    pair always comes from the SAME fine sub-cell.
+
+    coarsen_bathy_block, called independently on bathy and ice, each
+    picks its own shallowest fine sub-cell -- which can differ between
+    the two fields, producing a coarse cell that combines a shallow
+    seafloor from one location with thick ice from a different location,
+    a combination that never existed in the real source data (confirmed:
+    this destabilized the model at any deltaT close to real V4r6's own
+    3600s). Fixed by picking bathy and ice from the SAME fine sub-cell.
+
+    For a 3x3 block straddling the real ice-shelf front (a mix of open-
+    ocean and ice-covered fine cells -- confirmed to occur for a small
+    number of blocks), there is no single fine cell that is simultaneously
+    "the shallowest wet point" and "representative of the ice cover" --
+    picking by effective water column alone (bathy-ice) wrongly favors a
+    grounded/zero-cavity ice cell (effective column = 0, where ice sits
+    directly on the seafloor -- not a stability risk, just no active
+    ocean cell to simulate there) over a cell with a real, substantial
+    cavity, which is backwards: a grounded cell "looks safest" to a
+    plain argmax on effective column (0 is the largest/least-negative
+    value) even when a deep real cavity is available in the same block.
+    Resolved with an explicit MAJORITY VOTE per user decision: if most
+    (>=5 of 9) of the block's WET fine cells are ice-covered, treat the
+    coarse cell as ice-covered, picking the ice-covered wet cell with
+    the deepest/safest NONZERO effective column (falling back to a
+    grounded cell only if literally every ice-covered cell in the block
+    is grounded); otherwise treat it as open ocean (ice=0, pick the
+    open-ocean wet cell with the shallowest depth magnitude, matching
+    coarsen_bathy_block's existing convention for plain bathymetry).
+
+    Vectorized over an arbitrary leading shape, same convention as
+    coarsen_bathy_block: the LAST axis is the 9 constituent fine cells.
+
+    Returns: (coarse_bathy, coarse_ice), each the same shape as the
+    input minus the trailing 9-axis.
+    """
+    bathy9 = np.asarray(bathy9)
+    ice9 = np.asarray(ice9)
+    wet_mask = bathy9 != 0.0
+    ice_mask = wet_mask & (ice9 != 0.0)
+    open_mask = wet_mask & (ice9 == 0.0)
+    all_land = ~wet_mask.any(axis=-1)
+    # Majority vote among WET fine cells only (land cells don't count
+    # toward either side): ice-covered if >= half of the wet cells have
+    # ice, i.e. ice count >= open count (ties broken toward ice-covered,
+    # an arbitrary but immaterial choice for an exact 50/50 split).
+    n_ice = ice_mask.sum(axis=-1)
+    n_open = open_mask.sum(axis=-1)
+    is_ice_covered = n_ice >= n_open
+
+    # Ice-covered branch: deepest (safest) effective water column
+    # (bathy - ice) among ice-covered wet cells with a REAL (nonzero)
+    # cavity; only consider grounded (effective == 0) cells if no
+    # ice-covered cell in the block has a nonzero cavity at all.
+    effective = bathy9 - ice9
+    cavity_mask = ice_mask & (effective != 0.0)
+    has_real_cavity = cavity_mask.any(axis=-1, keepdims=True)
+    ice_pick_mask = np.where(has_real_cavity, cavity_mask, ice_mask)
+    eff_for_argmax = np.where(ice_pick_mask, effective, -np.inf)
+    ice_idx = np.argmax(eff_for_argmax, axis=-1)
+
+    # Open-ocean branch: shallowest depth magnitude among open-ocean wet
+    # cells only (coarsen_bathy_block's own convention).
+    abs_vals = np.where(open_mask, np.abs(bathy9), np.inf)
+    open_idx = np.argmin(abs_vals, axis=-1)
+
+    idx = np.where(is_ice_covered, ice_idx, open_idx)
+    coarse_bathy = np.squeeze(
+        np.take_along_axis(bathy9, np.expand_dims(idx, -1), axis=-1), axis=-1
+    )
+    coarse_ice = np.squeeze(
+        np.take_along_axis(ice9, np.expand_dims(idx, -1), axis=-1), axis=-1
+    )
+    # Open-ocean coarse cells must have ice=0 even if the chosen fine
+    # cell happened to tie with an ice cell (shouldn't occur given
+    # open_mask excludes ice cells, but keep this explicit/defensive).
+    coarse_ice = np.where(is_ice_covered, coarse_ice, 0.0)
+    coarse_bathy = np.where(all_land, 0.0, coarse_bathy)
+    coarse_ice = np.where(all_land, 0.0, coarse_ice)
+    return coarse_bathy, coarse_ice
+
+
+def coarsen_bathy_and_ice_facet(bathy_arr, ice_arr):
+    """Joint bathy+ice 3x3-block coarsening, built on
+    coarsen_bathy_and_ice_block (one vectorized call over all blocks at
+    once), mirroring coarsen_bathy_facet's own blocking pattern exactly.
+
+    bathy_arr, ice_arr: shape (ny, nx), same facet, same fine resolution.
+    Returns: (coarse_bathy, coarse_ice), each shape (ny//3, nx//3).
+    """
+    ny, nx = bathy_arr.shape
+    assert ice_arr.shape == (ny, nx), (bathy_arr.shape, ice_arr.shape)
+    factor = FACTOR
+    cny, cnx = ny // factor, nx // factor
+    bathy_blocks = bathy_arr.reshape(cny, factor, cnx, factor).transpose(0, 2, 1, 3).reshape(cny, cnx, factor * factor)
+    ice_blocks = ice_arr.reshape(cny, factor, cnx, factor).transpose(0, 2, 1, 3).reshape(cny, cnx, factor * factor)
+    return coarsen_bathy_and_ice_block(bathy_blocks, ice_blocks)
+
+
 def process_bathy():
     os.makedirs(OUT_BATHY_DIR, exist_ok=True)
 

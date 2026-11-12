@@ -104,15 +104,38 @@ def main():
     assert observed_in == expected_in, (
         f"ICE_DRAFT source: {observed_in} bytes, expected {expected_in} (90*1170*4)"
     )
+    bathy_observed_in = os.path.getsize(base.BATHY_SRC)
+    assert bathy_observed_in == expected_in, (
+        f"BATHY source: {bathy_observed_in} bytes, expected {expected_in} (90*1170*4)"
+    )
 
-    raw = np.fromfile(ICE_DRAFT_SRC, dtype=">f4").astype(np.float64)
-    compact = raw.reshape(COMPACT_NY, COMPACT_NX)
+    raw_ice = np.fromfile(ICE_DRAFT_SRC, dtype=">f4").astype(np.float64)
+    compact_ice = raw_ice.reshape(COMPACT_NY, COMPACT_NX)
+    raw_bathy = np.fromfile(base.BATHY_SRC, dtype=">f4").astype(np.float64)
+    compact_bathy = raw_bathy.reshape(COMPACT_NY, COMPACT_NX)
 
-    fine_facets = base.split_compact_into_facets(compact)
-    coarse_facets = {}
+    # Coarsen bathy and ice draft TOGETHER (coarsen_bathy_and_ice_facet),
+    # not independently via coarsen_bathy_facet -- the two fields must
+    # agree on which fine sub-cell each coarse cell is drawn from, or the
+    # result can combine a shallow seafloor from one location with thick
+    # ice from a different location (see that function's docstring for
+    # the real instability this caused). This OVERWRITES BATHY_LLC30.bin
+    # (written standalone by coarsen_llc90_to_llc30.py's process_bathy())
+    # with the joint-consistent version -- run that script FIRST, then
+    # this one, so this one's bathy output is the final, authoritative
+    # one actually used by the model.
+    fine_ice_facets = base.split_compact_into_facets(compact_ice)
+    fine_bathy_facets = base.split_compact_into_facets(compact_bathy)
+    coarse_ice_facets = {}
+    coarse_bathy_facets = {}
     for facet in range(1, 6):
-        coarse_facets[facet] = base.coarsen_bathy_facet(fine_facets[facet])
-    coarse_compact = base.assemble_facets_into_compact(coarse_facets)
+        coarse_bathy_facets[facet], coarse_ice_facets[facet] = (
+            base.coarsen_bathy_and_ice_facet(
+                fine_bathy_facets[facet], fine_ice_facets[facet]
+            )
+        )
+    coarse_compact = base.assemble_facets_into_compact(coarse_ice_facets)
+    coarse_bathy = base.assemble_facets_into_compact(coarse_bathy_facets)
 
     expected_out = COMPACT_COARSE_NX * COMPACT_COARSE_NY * 4
     out_bytes = coarse_compact.astype(">f4").tobytes()
@@ -128,12 +151,21 @@ def main():
     print(f"ICE_DRAFT_LLC30.bin: {observed_out} bytes OK "
           f"(compact shape {COMPACT_COARSE_NY}x{COMPACT_COARSE_NX})")
 
-    bathy_observed = os.path.getsize(BATHY_PATH)
-    assert bathy_observed == expected_out, (BATHY_PATH, bathy_observed, expected_out)
-    coarse_bathy = np.fromfile(BATHY_PATH, dtype=">f4").astype(np.float64).reshape(
-        COMPACT_COARSE_NY, COMPACT_COARSE_NX
+    bathy_out_bytes = coarse_bathy.astype(">f4").tobytes()
+    assert len(bathy_out_bytes) == expected_out, (
+        f"BATHY_LLC30.bin: assembled {len(bathy_out_bytes)} bytes, expected {expected_out}"
     )
-    verify_ice_draft_correctness(compact, coarse_compact, coarse_bathy)
+    with open(BATHY_PATH, "wb") as fh:
+        fh.write(bathy_out_bytes)
+    bathy_observed_out = os.path.getsize(BATHY_PATH)
+    assert bathy_observed_out == expected_out, (
+        f"BATHY_LLC30.bin: written {bathy_observed_out} bytes, expected {expected_out}"
+    )
+    print(f"BATHY_LLC30.bin: {bathy_observed_out} bytes OK "
+          f"(compact shape {COMPACT_COARSE_NY}x{COMPACT_COARSE_NX}, "
+          f"re-written jointly with ice draft for consistency)")
+    base.verify_bathy_correctness(compact_bathy, coarse_bathy)
+    verify_ice_draft_correctness(compact_ice, coarse_compact, coarse_bathy)
 
 
 if __name__ == "__main__":
