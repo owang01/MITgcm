@@ -1,0 +1,47 @@
+# EXCH2 Package: Wrapper-2 User Choice
+#--------------------
+#  preDefTopol   :: pre-defined Topology selector:
+#                :: = 0 : topology defined from processing "data.exch2";
+#                :: = 1 : simple, single facet topology;
+#                :: = 2 : customized topology (w2_set_myown_facets)
+#                :: = 3 : 6-facet Cube (3 face-dims: nRed, nGreen, nBlue).
+#  dimsFacets    :: facet pair of dimensions (n1x,n1y, n2x,n2y ...)
+#  facetEdgeLink :: Face-Edge connectivity map:
+#    facetEdgeLink(i,j)=XX.1 : face(j)-edge(i) (i=1,2,3,4 <==> N,S,E,W)
+#    is connected to Northern edge of face "XX" ; similarly,
+#    = XX.2 : to Southern.E, XX.3 = Eastern.E, XX.4 = Western.E of face "XX"
+#  blankList     :: List of "blank" tiles
+#  W2_mapIO      :: global map IO selector (-1 = old type ; 0 = 1 long line in X
+#                :: 1 = compact, mostly in Y dir)
+#  W2_printMsg   :: option for information messages printing
+#                :: <0 : write to log file ; =0 : minimum print ;
+#                :: =1 : no duplicated print ; =2 : all processes do print
+#--------------------
+# LLC30 topology: derived from the production LLC90 reference at
+#   .../Time-invariant-adjoint/v4r6/input.V4r6.102/data.exch2
+# by dividing dimsFacets by 3 (90->30, 270->90), PRESERVING each facet's
+# wide/tall orientation (facets 1,2 are tall: 30,90; facets 4,5 are WIDE:
+# 90,30 -- not 30,90; facet 3 is square: 30,30). facetEdgeLink is a pure
+# face-connectivity map and does not depend on resolution, so it is copied
+# byte-for-byte unchanged from the LLC90 reference. This dimsFacets/
+# facetEdgeLink pairing was independently verified with the hand-ported
+# edge-length consistency check from pkg/exch2/w2_set_f2f_index.F (see
+# verification/global_ocean.llc30x15/preprocess/check_exch2_edge_lengths.py)
+# -- all 16 connected edges (of 5 facets x 4 edges, with 4 disconnected
+# outer-boundary edges in this 5-facet form) pass.
+ &W2_EXCH2_PARM01
+  W2_printMsg= 0,
+  W2_mapIO   = 1,
+#
+  preDefTopol=0,
+#-- 5 facets llc_30 topology (drop facet 6 and its connection):
+  dimsFacets(1:10) = 30, 90, 30, 90, 30, 30, 90, 30, 90, 30,
+  facetEdgeLink(1:4,1)= 3.4, 0. , 2.4, 5.1,
+  facetEdgeLink(1:4,2)= 3.2, 0. , 4.2, 1.3,
+  facetEdgeLink(1:4,3)= 5.4, 2.1, 4.4, 1.1,
+  facetEdgeLink(1:4,4)= 5.2, 2.3, 0. , 3.3,
+  facetEdgeLink(1:4,5)= 1.4, 4.1, 0. , 3.1,
+#-- no blankList: every facet's narrow dimension already equals one 30x30
+#   tile width at this coarseness (see SIZE.h), so nSx=13 covers all 13
+#   facet tiles with nothing to blank.
+ /
