@@ -208,6 +208,9 @@ C-    Print an error msg and then stop:
      &       rStarFacC(i,j,bi,bj),
      &       Ro_surf(i,j,bi,bj)-R_low(i,j,bi,bj),
      &       etaFld(i,j,bi,bj)
+            WRITE(errorMessageUnit,'(A,2I4,A,2F12.4)')
+     &       ' fail at i,j=',i,j,' ; XC,YC =',
+     &       XC(i,j,bi,bj), YC(i,j,bi,bj)
            ENDIF
            IF ( rStarFacW(i,j,bi,bj).LT.hFacInf ) THEN
             tmpfldW = rSurfW(i,j,bi,bj) - rLowW(i,j,bi,bj)
@@ -215,6 +218,9 @@ C-    Print an error msg and then stop:
      &       ' fail at i,j=',i,j,' ; rStarFacW,H,eta =',
      &        rStarFacW(i,j,bi,bj), tmpfldW,
      &        etaFld(i-1,j,bi,bj), etaFld(i,j,bi,bj)
+            WRITE(errorMessageUnit,'(A,2I4,A,2F12.4)')
+     &       ' fail at i,j=',i,j,' ; XC,YC =',
+     &       XC(i,j,bi,bj), YC(i,j,bi,bj)
            ENDIF
            IF ( rStarFacS(i,j,bi,bj).LT.hFacInf ) THEN
             tmpfldS = rSurfS(i,j,bi,bj) - rLowS(i,j,bi,bj)
