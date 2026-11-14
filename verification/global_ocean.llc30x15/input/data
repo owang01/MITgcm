@@ -149,9 +149,20 @@
 
 # Elliptic solver parameters
  &PARM02
- cg2dMaxIters=200,
-#cg2dTargetResidual=1.E-9,
- cg2dTargetResWunit=6.65E-13,
+#-- cg2dMaxIters/cg2dTargetResWunit: adopted real V4r6's convention.
+#   LLC30 previously used cg2dMaxIters=200 + cg2dTargetResWunit=6.65E-13
+#   (both inherited from cs32x15); V4r6 uses cg2dMaxIters=300 and leaves
+#   cg2dTargetResWunit UNSET (<=0), which switches ini_cg2d.F's
+#   cg2dNormaliseRHS to .TRUE. -- a genuinely different solver
+#   convergence MODE (normalized-residual vs. a fixed physical-unit
+#   tolerance), not just a different number. An initial test of this
+#   switch appeared to crash catastrophically, but that was a test-setup
+#   artifact (a stale hFacMin=.1 scratch dir reused after the hFacMin=.2
+#   fix, not a real solver issue) -- retested cleanly from the current
+#   committed config: full 30-day deltaT=3600s run, STOP NORMAL END, no
+#   NaN, solver converges in ~35 iterations (even fewer than before).
+ cg2dMaxIters=300,
+#cg2dTargetResWunit=1.E-12,
  &
 
 # Time stepping parameters
@@ -170,7 +181,14 @@
  deltaTtracer=3600.,
  deltaTFreeSurf=3600.,
  deltaTClock =3600.,
- abEps = 0.1,
+#-- abEps: REMOVED (was 0.1, inherited from cs32x15). abEps is an
+#   Adams-Bashforth-2-only parameter (adams_bashforth2.F's
+#   abFac=0.5+abEps); this config compiles ALLOW_ADAMSBASHFORTH_3 (same
+#   as real V4r6), which uses alph_AB/beta_AB instead. Confirmed via
+#   STDOUT's config-summary echo that alph_AB/beta_AB were already
+#   taking MITgcm's own built-in defaults (0.5 / 5/12, from
+#   set_defaults.F) in both configs regardless of abEps -- it was
+#   genuinely inert, not a bug, matching why real V4r6 doesn't set it.
  tracForcingOutAB=1,
 #-- Real V4r6 pickup-file cold start (see preprocess/build_llc30_pickup.py
 #   and HANDOFF.md's "Pickup-file" section): pickupSuff redirects
