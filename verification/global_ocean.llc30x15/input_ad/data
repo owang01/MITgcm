@@ -3,9 +3,17 @@
 # ====================
 #
 # LLC30 adjoint experiment (Phase B, code_ad/input_ad) -- starts from
-# Phase A's forward input/data (see HANDOFF.md), with the AD-specific
-# edits noted inline below (nTimeSteps, cg2dTargetResidual,
-# adjMonitorFreq/adjDumpFreq, pickupStrictlyMatch).
+# Phase A's forward input/data (see HANDOFF.md), kept IDENTICAL to it
+# for every physics/numerics parameter (2026-11-14: confirmed real
+# V4r6's own adjoint run, Time-invariant-adjoint/v4r6/
+# run_local_adjv6_140_noseaicead/data, differs from its forward data
+# ONLY in nTimeSteps -- no separate adjoint-specific viscosity/
+# diffusivity/solver tuning. The earlier cs32x15/code_ad-style
+# convention of a separate cg2dTargetResidual=1.E-9 "for AD-gradient
+# agreement" was a code_ad-template precedent, not a real V4r6
+# practice, and has been dropped here to match V4r6's own approach).
+# Only the genuinely AD-specific additions remain: nTimeSteps (short
+# smoke test), adjMonitorFreq/adjDumpFreq (ADM gradient-check output).
 #
 # Continuous equation parameters
  &PARM01
@@ -20,10 +28,51 @@
 #   sRef remaps to exactly flat 34.5 since production sRef is itself flat.
  tRef= 22.6000,19.7170,15.0626,11.0093,8.2365,6.0819,4.5794,3.5163,2.3917,1.8283,1.0000,1.0000,1.0000,1.0000,1.0000,
  sRef=15*34.5,
- viscAh =3.E5,
- viscAr =1.E-3,
- diffKrT=3.E-5,
- diffKrS=3.E-5,
+#-- 2026-11-12 fix: viscAh=3.E5 (flat) was inherited unexamined from
+#   global_ocean.cs32x15's near-uniform ~310km cubed-sphere grid and was
+#   the real root cause of a deltaT=3600s CFL instability on LLC30's own
+#   grid, which (inherited from LLC90's pole/facet geometry via the 3:1
+#   coarsening) ranges over >100x in cell size (2.7km-333km, confirmed
+#   via run/DXF.data/DYF.data) -- a flat viscAh is systematically wrong
+#   for a grid this non-uniform. Switched to real V4r6's own scheme
+#   (input.V4r6.102/data): viscAh=1.0 (near-negligible flat term) +
+#   viscAhGrid=2.E-2 (grid-AREA-scaled Laplacian viscosity,
+#   Alin=viscAhGrid*L^2/deltaT per pkg/mom_common/mom_calc_visc.F --
+#   automatically larger on LLC30's biggest cells, smaller on its
+#   smallest, exactly the self-scaling behavior this grid needs; also
+#   automatically ~9x larger on LLC30's cells than on LLC90's own cells
+#   at the same location, the physically appropriate direction for a
+#   3x-coarser grid). Verified on the FORWARD config: full 30-day/
+#   720-step deltaT=3600s test (real bathy+pickup) reaches STOP NORMAL
+#   END on all 13 ranks, zero NaN -- see HANDOFF.md's "RESOLVED: LLC30's
+#   timestep ceiling" section for the full investigation.
+ viscAh =1.E0,
+ viscAhGrid=2.E-2,
+#-- viscAr: real V4r6's own value (0.5E-4), down from this config's
+#   previously-inherited cs32x15 value (1.E-3) -- no grid-area-scaling
+#   mechanism exists for vertical viscosity, so adopted as a flat copy;
+#   confirmed compatible with LLC30's 15-level delR (vs. V4r6's 50) on
+#   the forward config's 30-day verification run.
+ viscAr =0.5E-4,
+#-- diffKrT/diffKrS: adopted real V4r6's value (1.E-5), down from this
+#   config's previously-inherited cs32x15 value (3.E-5). Unlike viscAh,
+#   this is NOT a resolution-driven stability concern: diffKr*deltaT/dz^2
+#   (the explicit vertical-diffusion stability ratio) is ~1.4E-5 at
+#   diffKr=1.E-5 on LLC30's thinnest (50m) level at deltaT=3600s --
+#   ~35,000x below the ~0.5 instability threshold at EITHER value, since
+#   LLC30's vertical layers (50-1480m) are far thicker in absolute terms
+#   than its horizontal cells can be (down to 2.7km) -- so dz^2
+#   dominates the denominator regardless.
+ diffKrT=1.E-5,
+ diffKrS=1.E-5,
+#-- diffKhT/diffKhS: real V4r6's value (1.E1), ADDED here -- LLC30
+#   previously set no horizontal tracer diffusivity at all (implicitly
+#   0, never inherited from cs32x15 either -- a pure omission, not a
+#   wrong-value case). Checked: diffKh*dt/L^2 (horizontal diffusive
+#   stability ratio) is ~1.3E-5 even on LLC30's smallest (2.7km) cells
+#   at this value -- far below the ~0.5 instability threshold.
+ diffKhT=1.E1,
+ diffKhS=1.E1,
  ivdc_kappa=10.,
 #-- Task 6 fix: pkg/ggl90/ggl90_check.F hard-requires implicitViscosity
 #   (STOP 'ABNORMAL END: S/R GGL90_CHECK' otherwise); implicitDiffusion
@@ -32,7 +81,11 @@
  implicitViscosity=.TRUE.,
  implicitDiffusion=.TRUE.,
  gravity=9.81,
- rhoConst=1035.,
+#-- rhoConst: adopted real V4r6's value (1029.), down from this
+#   config's previously-inherited cs32x15 value (1035.) -- a pure
+#   physical constant for the Boussinesq approximation, no
+#   resolution-dependence mechanism applies.
+ rhoConst=1029.,
  rhoConstFresh=1000.,
  eosType='JMD95Z',
  staggerTimeStep=.TRUE.,
@@ -50,8 +103,27 @@
 #   freezing physics itself) -- confirmed real V4r6 also sets this
 #   .FALSE. (input.V4r6.102/data).
  allowFreezing=.FALSE.,
- hFacMin=.1,
- hFacMinDr=20.,
+#-- no_slip_sides/no_slip_bottom + bottomDragQuadratic: adopted real
+#   V4r6's values (previously LLC30 defaulted to free-slip + no bottom
+#   drag, inherited un-set from cs32x15). Physical boundary-condition
+#   choices, not resolution-coupled numerics; already confirmed on the
+#   forward config that no_slip alone has ZERO effect on the
+#   deltaT=3600s CFL instability.
+ no_slip_sides=.TRUE.,
+ no_slip_bottom=.TRUE.,
+ bottomDragQuadratic=0.001,
+#-- hFacMinDr raised 20->30 (paired with the viscosity fix above, same
+#   as the forward config -- see ini_masks_etc.F's rStarFacW/S).
+#-- hFacMin: adopted real V4r6's value (.2), up from this config's
+#   previously-inherited cs32x15 value (.1). UNLIKE the other params
+#   adopted this session, this one IS genuinely resolution-coupled:
+#   hFacMin combines via MAX() with hFacMinDr/drF(k) in
+#   ini_masks_etc.F, and on LLC30's much-thicker vertical layers
+#   (50-1480m vs V4r6's 10-242m), hFacMin itself becomes the binding
+#   floor from level 5 (~190m) downward. Regenerated hFac*.data + the
+#   pickup file to match (same procedure as the forward config).
+ hFacMin=.2,
+ hFacMinDr=30.,
 #-- LLC30 bathymetry (preprocess/output/bathy/BATHY_LLC30.bin) is real*4;
 #   PARM05's readBinaryPrec below (32) controls the bathyFile read
 #   explicitly, but set the namelist-wide default to the same value for
@@ -69,10 +141,16 @@
 
 # Elliptic solver parameters
  &PARM02
- cg2dMaxIters=200,
-#-- Phase B: tighter numerics for AD-gradient agreement (matches the
-#   cs32x15/code_ad precedent), replacing Phase A's cg2dTargetResWunit.
- cg2dTargetResidual=1.E-9,
+#-- cg2dMaxIters/cg2dTargetResWunit: adopted real V4r6's convention,
+#   confirmed identical between V4r6's own forward and adjoint runs
+#   (Time-invariant-adjoint/v4r6/run_local_adjv6_140_noseaicead/data
+#   differs from input.V4r6.102/data ONLY in nTimeSteps -- no separate
+#   adjoint-specific solver tuning). This DROPS the earlier
+#   cg2dTargetResidual=1.E-9 "tighter numerics for AD-gradient
+#   agreement" convention this file used to cite (a cs32x15/code_ad
+#   template precedent, not a real V4r6 practice).
+ cg2dMaxIters=300,
+#cg2dTargetResWunit=1.E-12,
  &
 
 # Time stepping parameters
@@ -81,11 +159,20 @@
 #-- Phase B: short AD smoke test (same scale as every other code_ad/
 #   precedent in this tree, e.g. cs32x15's own nTimeSteps=5).
  nTimeSteps=5,
- deltaTMom   =1200.,
- deltaTtracer=86400.,
- deltaTFreeSurf=86400.,
- deltaTClock =86400.,
- abEps = 0.1,
+#-- Unified to V4r6's own deltaT=3600s (2026-11-12), replacing the
+#   previously-inherited cs32x15 split (deltaTMom=1200./
+#   deltaTtracer=deltaTFreeSurf=deltaTClock=86400.).
+ deltaTMom   =3600.,
+ deltaTtracer=3600.,
+ deltaTFreeSurf=3600.,
+ deltaTClock =3600.,
+#-- abEps: REMOVED (was 0.1, inherited from cs32x15). abEps is an
+#   Adams-Bashforth-2-only parameter (adams_bashforth2.F's
+#   abFac=0.5+abEps); this config compiles ALLOW_ADAMSBASHFORTH_3 (same
+#   as real V4r6), which uses alph_AB/beta_AB instead -- confirmed via
+#   the forward config's runtime config-summary echo that alph_AB/
+#   beta_AB were already taking MITgcm's own built-in defaults
+#   (0.5 / 5/12, from set_defaults.F) regardless of abEps.
  tracForcingOutAB=1,
 #-- Real V4r6 pickup-file cold start (see preprocess/build_llc30_pickup.py
 #   and HANDOFF.md's "Pickup-file" section): pickupSuff redirects
