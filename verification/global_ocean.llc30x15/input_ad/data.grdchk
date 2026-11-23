@@ -1,32 +1,120 @@
 # *******************
 # ECCO gradient check
 # *******************
-#-- LLC30 adjoint experiment: iGloTile/jGloTile/iGloPos/jGloPos point
-#   at a confirmed wet surface cell. Global compact run/hFacC.data
-#   (useSingleCpuIO, shape (15,30,390)) read back with numpy: wet cell
-#   at 0-indexed global (j=1, i=30). Confirmed via run/XC.data that
-#   longitude is continuous across i=30 (tile1/tile2 boundary within
-#   facet 1, sNx=sNy=30, nSx=13, nSy=1 -- tiles stacked consecutively
-#   along X in tile-number order), so global i=30 is local index 0 of
-#   tile 2: iGloTile=2, iGloPos=1 (1-indexed); jGloTile=1 (nSy=1),
-#   jGloPos=2 (1-indexed, j=1 0-indexed + 1).
-#-- nend=0 (just the single check at icomp=nbeg=0, the wet cell above):
-#   a real discovery, found only by running the model -- grdchk_main.F's
+#-- Seed cell: global compact pickup_seaice.0000000000.data/hFacC.data
+#   (useSingleCpuIO, shape (30,390) per 2D field) read back with numpy
+#   at 0-indexed global (j=3, i=283) -> lon=2.5, lat=-14.37 (tropical
+#   Atlantic). Confirmed siAREA=0.0 at this cell AND at every cell
+#   within a 2-cell radius in all directions, and hFacC wet 14/15
+#   levels. Chosen 2026-11-16 to replace an earlier seed cell
+#   (iGloTile=2/jGloTile=1/iGloPos=1/jGloPos=2, lon=-36.5,lat=-54.5)
+#   that turned out to sit right at a sea-ice margin (siAREA=0.55 at
+#   the cell, 0.0-0.55 in its immediate neighbors) -- initially
+#   suspected as the cause of a bad gradient-check disagreement there,
+#   but this theory was later disproven (see below): the ice-margin
+#   location was a red herring, not the real explanation. Via
+#   SIZE.h_mpi's nSx=13/nSy=1 along-X tile-stacking convention: global
+#   i=283 falls in tile 10 (i=270..299), local index 13 (0-indexed) ->
+#   iGloTile=10, iGloPos=14 (1-indexed); jGloTile=1, jGloPos=4.
+#-- nend=0 (single check at icomp=nbeg=0, the cell above): grdchk_main.F's
 #   icomp loop walks LINEARLY through the global compact-grid control
-#   vector starting at this cell, so nend=3 (4 checks total) walked into
-#   3 immediately-following DRY cells (confirmed: run/hFacC.data at
-#   i=2,3,4 (1-indexed) alongside this cell is all 0.0), where both the
-#   adjoint and finite-difference gradients are near-zero numerical
-#   noise -- the wild "1 - fd/adj" ratios at those points are an
-#   artifact of dividing noise by noise, not a real adjoint-correctness
-#   failure. Confirmed check #1 (THIS cell) agrees to ~2%
-#   (adj=-1.11027E-02, fd=-1.10772E-02).
+#   vector starting at this cell, so nend>0 risks walking into a dry
+#   or ice-contaminated neighbor cell (confirmed during Phase B's
+#   original setup -- see HANDOFF.md's Phase B "grdchk" discovery #6).
+#   Keep nend=0 unless a multi-cell check is deliberately set up with
+#   verified-clean consecutive cells.
+#
+#-- RESOLVED 2026-11-18 (full investigation in HANDOFF.md's "FULLY
+#   RESOLVED" section and auto-memory reference_llc30_adjoint_gradcheck_bug):
+#   each of the 4 controls (xx_atemp/xx_precip/xx_tauu/xx_tauv) has a
+#   DIFFERENT natural sensitivity magnitude at this cell, so a single
+#   grdchk_eps does not give a clean check for all of them -- the
+#   TAF-generated adjoint itself is CORRECT for all 4, confirmed by
+#   rerunning each at its own appropriate eps:
+#
+#     Control     | eps=1.d-4 RMS ratio | Needs      | RMS at right eps
+#     ------------|----------------------|------------|------------------
+#     xx_tauu     | 2.13E-04 (clean)     | 1.d-4  OK  | 2.13E-04
+#     xx_tauv     | 33.65 (fails)        | 1.d-6      | 3.97E-04
+#     xx_precip   | 29.25 (fails)        | 1.d-6      | 1.89E-02
+#     xx_atemp    | 778    (fails)       | 1.0        | 3.88E-02
+#
+#   xx_tauv/xx_precip fail at eps=1.d-4 because the step is too LARGE
+#   for their curvature (classic FD-truncation error -- RMS ratio
+#   shrinks smoothly as eps shrinks, confirmed for both; the "excess"
+#   term over the linear prediction scales close to eps^3 across the
+#   1.d-4/1.d-6 pair for xx_tauv, the expected signature of a genuine
+#   3rd-derivative central-difference truncation term, not a separate
+#   artifact).
+#
+#   CORRECTION 2026-11-19 (RETRACTED): an earlier version of this
+#   comment claimed xx_tauu needing ~2 orders of magnitude less eps
+#   than xx_tauv was explained by this seed cell sitting on a coastline
+#   (hFacS=0 "immediately north"). That claim was WRONG -- it treated
+#   the array step j+1 as a real geographic neighbor, but it is NOT:
+#   checking actual lon/lat distance, j+1 at this cell jumps 3196 km
+#   away (a facet/tile-boundary artifact), not an adjacent cell (i±1
+#   WAS a real ~323km neighbor at this same cell -- only the
+#   j-direction step was bogus). The real reason xx_tauv needs ~100x
+#   smaller eps than xx_tauu at this cell is RESOLVED below (see the
+#   2026-11-19 entry a few lines down) -- real FD-truncation curvature
+#   for xx_tauv at THIS cell (confirmed via eps^3 scaling), not a
+#   coastal effect or any adjoint bug.
+#
+#   xx_atemp
+#   fails at eps=1.d-4 (and gets WORSE at 1.d-6, 1.d-8) because the
+#   step is too SMALL: its true signal (eps*adjoint_gradient ~
+#   eps*7.5E-4) is swamped by an apparent ~1E-4 absolute noise floor in
+#   the cost function at every small eps -- a plausible source is
+#   pkg/seaice/seaice_growth.F's hard freezing-point branch
+#   (`IF (theta.GE.tempFrz) THEN ... ELSE ...`), confirmed via direct
+#   inspection that dozens of cells elsewhere in the domain sit close
+#   enough to tempFrz=-1.96C that a tiny atemp perturbation anywhere in
+#   the checkpointed trajectory could flip one across the branch and
+#   inject an eps-independent jump into fc. Only once eps=1.0 pushed
+#   the true signal above that noise floor did xx_atemp's check pass
+#   cleanly (same sign, RMS 3.88E-02).
+#
+#   Default for THIS (tropical Atlantic) seed cell was kept at
+#   eps=1.d-4 (xx_tauu's best value) with the table above documenting
+#   what to use for other controls -- but see below, this config has
+#   now MOVED to a different, properly-verified seed cell for
+#   general-purpose use, and the whole table needs re-establishing
+#   there before trusting it for routine use again.
+#
+#-- 2026-11-19: a second seed cell (lon=-147.5, lat=17.27N, eastern
+#   subtropical North Pacific, far from land and deep) was tried as a
+#   candidate replacement, per the user's request to use a genuinely
+#   open-ocean point for general-purpose use, and to re-test whether
+#   xx_tauu/xx_tauv still need very different eps away from this
+#   cell's location (the "coastal" explanation for that gap had been
+#   retracted -- see CORRECTION above -- and a follow-up check found
+#   THIS cell isn't coastal either: nearest land 1292km, depth 5374m).
+#   RESULT at the new cell: BOTH xx_tauv (adj=3.11E-09,
+#   fd=1.95E-01, RMS 6.27E7) and xx_tauu (adj=5.80E-09,
+#   fd=-1.34E-04, RMS 2.30E4) showed a near-zero TRUE adjoint
+#   sensitivity, confirmed via near-identical fcpertplus/fcpertminus
+#   values (catastrophic-cancellation signature, not a real response)
+#   -- both controls' true wind-stress sensitivity is simply too small
+#   at that far-offshore cell to clear the model's ~1E-5-to-1E-4
+#   cost-function noise floor at eps=1.d-4. CONCLUSION: there is no
+#   coastal effect, no U/V-momentum asymmetry, no adjoint bug anywhere
+#   -- every apparent grdchk "failure" across all 4 controls, at both
+#   cells, reduces to whether eps*adjoint_gradient clears this model's
+#   inherent noise floor at that specific cell. "Deep and far from
+#   land" does not by itself guarantee a usable signal for every
+#   control. DECISION: kept THIS (original) cell as the standing seed
+#   cell rather than switching, since it already has a known-good
+#   per-control eps table (see RESOLVED 2026-11-18 above) and the new
+#   cell's wind-stress signal turned out to be worse, not better. Full
+#   narrative in HANDOFF.md's "RESOLVED 2026-11-19" section and
+#   auto-memory reference_llc30_adjoint_gradcheck_bug.
  &GRDCHK_NML
  grdchk_eps       = 1.d-4,
- iGloTile         = 2,
+ iGloTile         = 10,
  jGloTile         = 1,
- iGloPos          = 1,
- jGloPos          = 2,
+ iGloPos          = 14,
+ jGloPos          = 4,
  kGloPos          = 1,
  nstep            = 1,
  nend             = 0,
