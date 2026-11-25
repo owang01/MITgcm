@@ -19,8 +19,11 @@ provenance and coarsening method" below, and
 `preprocess/README.md`'s "Initial condition" section). This makes the config
 a general LLC
 dev sandbox -- useful on its own for testing `pkg/exch2`/tiling/core-MITgcm
-changes -- and a possible future foundation for adding `pkg/ecco`/`pkg/ctrl`/
-adjoint support (not attempted here; see Non-Goals).
+changes, and a real testbed for ECCO V4r6's adjoint machinery: a full
+`code_ad`/`input_ad` adjoint setup (real V4r6 package list -- `gmredi`,
+`seaice`, `shelfice`, `steep_icecavity`, `salt_plume`, plus the adjoint
+stack `autodiff cost ctrl grdchk ecco profiles smooth`) exists alongside
+the forward config -- see "Adjoint build and run" below.
 
 Build
 -----
@@ -66,8 +69,70 @@ regenerate them from the source LLC90 data.
 different `-np`; the tile/process decomposition is baked into `SIZE.h` at
 build time (see Technical Details in the plan this config was built from).
 
-This is a short (10-step) forward-only smoke test, not a scientifically
+This is a short (10-step) forward smoke test, not a scientifically
 meaningful integration.
+
+Adjoint build and run
+----------------------
+
+The adjoint experiment (`code_ad`/`input_ad`) builds on top of the forward
+config above with the full real-V4r6 adjoint package stack (`autodiff cost
+ctrl grdchk ecco profiles smooth`). It requires TAF (FastOpt's source-to-
+source AD tool) -- this project uses the remote `staf` service (point
+`PATH` at a directory containing a `staf` wrapper script, e.g. `~/bin/`).
+
+**Via the Docker harness** (the primary, documented way to build/run this
+-- works from any machine with Docker, does not require TAF/MPI/NetCDF
+installed locally beyond what the container provides):
+
+```
+./experiment_compile.sh global_ocean.llc30x15 -mpi -adm -taf_dir ~/bin/ -clean
+./experiment_run_no_compile.sh global_ocean.llc30x15 -adm -mpi 13
+```
+
+(`experiment_compile.sh`/`experiment_run_no_compile.sh` are symlinked in
+from the sibling `MITgcm_verification_docker` repo -- see that repo's own
+README if these scripts are missing.) This reaches `PROGRAM MAIN:
+Execution ended Normally` with a real non-zero cost function and writes
+output into `output_docker_adm/`.
+
+**Directly via `genmake2`/`mpiexec`** (faster, no Docker required, but
+needs TAF reachable, plus `gfortran`+OpenMPI+NetCDF-Fortran -- e.g. the
+`mitgcm_ad_v4r6` micromamba env this config was developed against):
+
+```
+cd build_ad
+cp ../code_ad/SIZE.h_mpi ./SIZE.h.mpi    # SEE WARNING BELOW
+ln -s SIZE.h.mpi SIZE.h
+export PATH=$HOME/micromamba/envs/mitgcm_ad_v4r6/bin:$HOME/bin:$PATH  # gfortran, OpenMPI, netcdf-fortran, staf
+../../../tools/genmake2 -mods=../code_ad -optfile=../code/linux_amd64_gfortran+mpi_local -mpi
+make depend
+make adall
+cd ../run_ad
+mkdir -p diags   # pkg/diagnostics writes here; not created automatically
+mpiexec --oversubscribe -np 13 ./mitgcmuv_ad
+```
+
+**WARNING, read before using `-mpi` on ANY variant of this config**:
+`genmake2`'s default `SIZE.h` (from `code/` or `code_ad/`) is the
+single-process decomposition (`nPx=1, nSx=13` -- all 13 tiles on one
+process, the forward config's own documented laptop-friendly default, see
+"Run" above). The genuine 13-rank MPI decomposition (`nPx=13, nSx=1`)
+lives in a SEPARATE file, `SIZE.h_mpi`, which must be staged as
+`SIZE.h.mpi` + a `SIZE.h` symlink pointing to it (as shown above) BEFORE
+calling `genmake2 -mpi` -- `genmake2 -mpi` alone does NOT do this
+automatically; it only adds `-DALLOW_USE_MPI` to the preprocessor defines,
+nothing else. Skipping this step, or passing `-mpi` without first staging
+`SIZE.h.mpi`, produces a binary that either (a) silently runs as 13
+independent single-process copies if `ALLOW_USE_MPI` was never defined at
+all (each one racing to create/delete an identical `scratch1.000000000`
+temp file -- `Fortran runtime error: File cannot be deleted`), or (b)
+correctly detects 13 MPI ranks but then fails `EEBOOT_MINIMAL: No. of
+procs=13 not equal to nPx*nPy=1` if `ALLOW_USE_MPI` was defined but
+`SIZE.h` was never switched to the MPI variant. (MITgcm's own
+`verification/testreport` script, which the Docker harness above uses
+internally, stages this automatically for `-MPI=N` builds -- a bare
+`genmake2 -mpi` invocation does not replicate that step.)
 
 Comparison output
 ------------------
@@ -76,12 +141,20 @@ There is comparison/proof output in:
 
     results/output.txt
 
-This is the `STDOUT.0000` of a successful run: ends in
+This is the `STDOUT.0000` of a successful forward run: ends in
 `PROGRAM MAIN: Execution ended Normally` with `CONFIG_CHECK : Normal End`,
 reaches `time_tsnumber = 10` (the full `nIter0(0)+nTimeSteps(10)` requested
 in `input/data` PARM03), and reports
 `W2_E2SETUP: Total number of Facets = 5` /
 `W2_E2SETUP: Total number of Tiles = 13` from the `pkg/exch2` setup banner.
+
+The adjoint's own comparison/proof output is in:
+
+    results/output_adm.txt
+
+Same `STDOUT.0000`-of-a-successful-run convention, for the `-adm` build:
+ends in `PROGRAM MAIN: Execution ended Normally`, `STOP NORMAL END`, with
+a real non-zero `global fc` cost-function value.
 
 Comments
 --------
@@ -171,10 +244,21 @@ Non-Goals / known limitations
 Read this section before using this config for anything beyond what it
 claims:
 
-* **No adjoint, `pkg/ecco`, or `pkg/ctrl` support.** This is a forward-only
-  config. No `code_ad`/`input_ad` siblings exist (unlike
-  `global_ocean.90x40x15`'s pattern) -- adding them is explicitly deferred
-  future work, not attempted here.
+* **Adjoint (`pkg/ecco`/`pkg/ctrl`/TAF) support DOES exist** -- see
+  "Adjoint build and run" above; this note previously said otherwise and
+  was stale (adjoint support was added after this README was first
+  written). 4 time-varying 2-D forcing controls (`xx_atemp`/`xx_precip`/
+  `xx_tauu`/`xx_tauv`), a real-SST `pkg/ecco` cost term, and `pkg/profiles`
+  CTD-profile ingestion are wired up; `pkg/grdchk`'s gradient check passes
+  cleanly at the seed cell/control/`grdchk_eps` combination documented in
+  `input_ad/data.grdchk`'s own header comment, which also documents a
+  per-control `grdchk_eps` reference table -- a single `grdchk_eps` value
+  does NOT give a clean check for every control at the same cell, this is
+  expected and documented, not a bug (see `input_ad/data.grdchk` for the
+  full explanation if the gradient check looks wrong for a control/cell
+  combination not already covered there). No `pkg/ctrl`-driven optimization
+  (actually adjusting controls to minimize the cost function) has been
+  attempted -- this is gradient-check-level adjoint verification only.
 * **No scientific validation of the physics.** "Done" for this config means
   "builds and completes a short forward integration without crashing or
   producing NaN/Infinity" -- nothing more. There is no claim that the
